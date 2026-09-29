@@ -1,0 +1,76 @@
+.fishing-screen {
+  --fishing-ink: #234b4e;
+  --fishing-paper: #f3f4e8;
+  width: min(100%, 440px);
+  margin: 0 auto;
+  color: var(--fishing-ink);
+  background: #d8ece9;
+  font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  overflow: clip;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.fishing-screen[data-time-of-day="night"] { --fishing-ink: #e1e7f3; background: #192039; }
+.fishing-header { height: 58px; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; padding: 0 10px; }
+.fishing-header h1 { font-size: 20px; line-height: 1.4; letter-spacing: .06em; text-align: center; font-weight: 800; }
+.fishing-screen button { min-height: 44px; border: 0; color: inherit; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.fishing-screen button:focus-visible { outline: 3px solid #bd693c; outline-offset: -3px; }
+.fishing-screen button:disabled { cursor: default; }
+.fishing-header button { padding: 0 5px; background: transparent; font-size: 12px; border-radius: 8px; }
+.fishing-header button:hover { background: #7ea8ad30; }
+.fishing-header button:active { background: #7ea8ad50; }
+.fishing-stage { position: relative; width: 100%; aspect-ratio: 390 / 600; container-type: inline-size; touch-action: manipulation; overflow: hidden; user-select: none; }
+.fishing-world { width: 100%; height: 100%; display: block; }
+.fishing-sea-input { position: absolute; inset: 30.7% 0 0; width: 100%; background: transparent; cursor: crosshair !important; padding: 0; }
+.fishing-sky-body { position: absolute; top: 3.4%; left: 4.6%; width: 14%; min-width: 44px; aspect-ratio: 1; padding: 0; background: transparent; border-radius: 50%; }
+.fishing-sky-body svg { display: block; width: 100%; height: 100%; }
+.fishing-sky-body:hover { transform: translateY(-1px); }
+.fishing-sky-body:active { transform: scale(.95); }
+.fishing-count { position: absolute; bottom: 14px; left: 16px; color: #e0f0ec; font-size: 20px; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
+.fishing-count span { font-size: 13px; margin-left: 3px; }
+.fishing-time-toggle { position: absolute; right: 8px; bottom: 2px; min-width: 66px; padding: 0 10px; border-radius: 8px; background: transparent; color: #e0f0ec !important; font-size: 13px; }
+.fishing-time-toggle:hover { background: #b7e5dc20; }
+.fishing-time-toggle:active { background: #b7e5dc30; }
+.fishing-name text { paint-order: stroke fill; stroke: #000; stroke-width: 1.6px; stroke-linejoin: round; }
+.fishing-name-halo { fill: transparent; stroke: transparent; }
+.fishing-name.is-caught .fishing-name-halo { fill: #123f50; stroke: #f8dc8a; stroke-width: 1.5px; }
+.fishing-names { transition: opacity 250ms ease; }
+.fishing-names.during-intro { opacity: .28; }
+.fishing-shiro { transform-origin: 357px 150px; transition: transform 700ms cubic-bezier(.12,.75,.26,1), opacity 350ms ease; }
+.fishing-shiro.is-away { transform: translate(110px,-165px) rotate(140deg); opacity: 0; }
+.fishing-mood-mark { fill: #645077; font-size: 18px; font-weight: 800; }
+.mood-shy .fishing-mood-mark { fill: #a75567; }
+[data-time-of-day="night"] .fishing-mood-mark { fill: #e2c5f0; }
+.mood-nervous { animation: fishing-nervous 380ms ease-in-out 3; }
+.fishing-announcement { position: absolute; inset: 0; pointer-events: none; }
+.fishing-intro { position: absolute; left: 9%; width: 82%; top: 41%; padding: 0; text-align: center; background: transparent; color: #fcf6dc !important; pointer-events: auto; }
+.fishing-intro p { margin: 0; font-size: clamp(18px, 5.4cqi, 24px); line-height: 1.8; font-weight: 600; text-wrap: balance; text-shadow: 0 2px 6px #163e47; }
+.fishing-intro > .fishing-next { justify-content: center; margin-top: 20px; color: #cce1da; }
+.fishing-speech { position: absolute; padding: 8px 12px; border-radius: 12px; background: var(--fishing-paper); color: #203e42 !important; box-shadow: 0 4px 10px #08273528; text-align: left; pointer-events: auto; }
+.fishing-speech::before { content: ""; position: absolute; right: -9px; bottom: 14px; width: 12px; height: 14px; background: var(--fishing-paper); clip-path: polygon(0 0, 100% 100%, 0 75%); }
+.fishing-speech.from-shore { top: 14%; right: 36%; }
+.fishing-speech.from-shore[data-speaker="shiro"] { top: 2%; right: 18%; }
+.fishing-speech.from-idol { transform: translateY(-50%); }
+.fishing-speech.from-idol::before { top: calc(50% + var(--idol-tail-offset, 0cqi) - 7px); right: -10px; bottom: auto; width: 11px; height: 14px; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.fishing-speech.from-idol[data-tail-side="left"]::before { right: auto; left: -10px; transform: scaleX(-1); }
+.fishing-speech.from-water { top: 32.5%; left: 4%; }
+.fishing-speech.from-water::before { right: 20px; bottom: -9px; transform: rotate(90deg); }
+.fishing-speech.fishing-sky-response { top: 2%; left: 21%; width: max-content; padding-inline: 10px; pointer-events: none; }
+.fishing-speaker { display: block; font-size: 12px; line-height: 1.5; font-weight: 700; color: #4e7074; margin-bottom: 4px; }
+.fishing-speech p { margin: 0; font-size: var(--fishing-dialogue-font, 15px); line-height: 1.5; line-break: strict; overflow-wrap: break-word; }
+.fishing-next { display: flex; justify-content: flex-end; margin-top: 6px; color: #526c64; }
+.fishing-continue-mark { display: block; width: 8px; height: 5px; background: currentColor; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.fishing-speech:not(:disabled):active, .fishing-intro:not(:disabled):active, .fishing-silent-confirm:not(:disabled):active { opacity: .8; }
+.fishing-silent-confirm { position: absolute; top: 37.5%; left: 44%; width: 24%; display: grid; place-items: center; padding: 0; pointer-events: auto; background: transparent; color: #e0f0ec !important; }
+.fishing-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.is-background *, .is-background *::before { animation-play-state: paused !important; }
+@keyframes fishing-nervous { 50% { translate: 1px 0; } }
+@media (min-width: 760px) {
+  .fishing-screen { width: min(440px, calc((100dvh - 116px) * .65)); min-width: 320px; border-radius: 18px; box-shadow: 0 18px 54px #0006; }
+}
+@media (max-width: 359px) {
+  .fishing-header { height: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fishing-screen *, .fishing-screen *::before { animation: none !important; transition: none !important; }
+}

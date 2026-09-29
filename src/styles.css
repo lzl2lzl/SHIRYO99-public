@@ -1,0 +1,42 @@
+:root {
+  font-family: "Arial Narrow", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  color: #f5f4ed;
+  background: #11110f;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --acid: #d9ff43;
+  --ink: #11110f;
+  --panel: #1b1b18;
+  --line: #3b3b34;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+html { min-width: 320px; background: #11110f; }
+body { margin: 0; min-width: 320px; min-height: 100dvh; background: radial-gradient(circle at 80% 0%, #27271f 0, transparent 30rem), #11110f; }
+button { font: inherit; }
+button:focus-visible { outline: 3px solid var(--acid); outline-offset: 3px; }
+
+h1 { margin: 0; font-size: clamp(38px, 12vw, 58px); line-height: .82; letter-spacing: -.07em; }
+
+html:has(.lobby-shell), body:has(.lobby-shell) { background: #fff; }
+body:has(.lobby-shell) { padding: 0; }
+.lobby-shell { width: min(100%, 680px); min-height: 100dvh; margin: 0 auto; padding: max(32px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); color: #39343f; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+.brand-header h1 { margin: 0; line-height: 1; }
+.brand-header img { display: block; width: min(260px, 100%); height: auto; }
+.lobby-games { margin-top: 24px; border-top: 1px solid #e8e4eb; }
+.lobby-game-link { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 12px 4px; border-bottom: 1px solid #e8e4eb; color: #634486; font-size: 17px; line-height: 1.5; font-weight: 600; text-decoration: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.lobby-game-link > :first-child { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.lobby-game-link:hover { background: #f7f4fa; }
+.lobby-game-link:active { background: #eee7f5; }
+.lobby-game-link:focus-visible { outline: 2px solid #634486; outline-offset: 3px; }
+.lobby-play { flex: none; font-size: 13px; font-weight: 400; }
+.lobby-footer { margin-top: 28px; color: #746c7c; font-size: 12px; line-height: 1.8; }
+
+@media (min-width: 760px) {
+  body { padding: 28px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
