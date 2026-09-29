@@ -31,7 +31,6 @@
 .fishing-time-toggle { position: absolute; right: 8px; bottom: 2px; min-width: 66px; padding: 0 10px; border-radius: 8px; background: transparent; color: #e0f0ec !important; font-size: 13px; }
 .fishing-time-toggle:hover { background: #b7e5dc20; }
 .fishing-time-toggle:active { background: #b7e5dc30; }
-.fishing-name text { paint-order: stroke fill; stroke: #000; stroke-width: 1.6px; stroke-linejoin: round; }
 .fishing-name-halo { fill: transparent; stroke: transparent; }
 .fishing-name.is-caught .fishing-name-halo { fill: #123f50; stroke: #f8dc8a; stroke-width: 1.5px; }
 .fishing-names { transition: opacity 250ms ease; }

@@ -10,8 +10,8 @@ test('all sixteen names retain their individual official website colors', () => 
   assert.equal(new Set(IDOLS.map((idol) => idol.color)).size, 16)
 })
 
-test('every name uses the same black outline without changing its caught fill', () => {
+test('names keep their member fill without any text outline or caught color override', () => {
   const css = readFileSync(new URL('../src/games/fishing/fishing.css', import.meta.url), 'utf8')
-  assert.match(css, /\.fishing-name text\s*\{[^}]*stroke:\s*#000;/)
+  assert.doesNotMatch(css, /\.fishing-name[^{}]*(?:text|tspan)[^{}]*\{[^}]*(?:stroke|text-shadow|filter):/)
   assert.doesNotMatch(css, /\.fishing-name\.is-caught\s*\{[^}]*\bcolor:/)
 })
