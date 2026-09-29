@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CAST_LINES, ENCOUNTERS, INTRO_LINES, needsConfirmation } from '../src/games/fishing/content.ts'
-import { dialoguePages, idolBubbleAnchor, skyResponse } from '../src/games/fishing/presentation.ts'
+import { dialoguePages, idolBubbleAnchor, SHIRO_DINNER, skyResponse } from '../src/games/fishing/presentation.ts'
 import { FISH_BOUNDS, FISH_HITBOX, WORLD_WIDTH, WORLD_HEIGHT } from '../src/games/fishing/model.ts'
 
 const splitGraphemes = (text) => Array.from(new Intl.Segmenter('zh', {granularity: 'grapheme'}).segment(text), part => part.segment)
 const unitMeasure = (text) => splitGraphemes(text).reduce((width, character) => width + (/^[\x00-\x7F]+$/.test(character) ? 0.55 : 1), 0)
 const pixelMeasure = (text) => unitMeasure(text) * 15
+
+test('sunset Shiro dinner response is an independent automatic line', () => {
+  assert.equal(SHIRO_DINNER.text, '什么时候吃饭？')
+  assert.equal(SHIRO_DINNER.speaker, 'shiro')
+  assert.equal(SHIRO_DINNER.durationMs, 1800)
+  assert.equal(needsConfirmation(SHIRO_DINNER), false)
+})
 
 // Independent character-level wrapping gives a lower-bound layout check, including explicit newlines.
 function wrappedLines(text, maxWidth, measure) {

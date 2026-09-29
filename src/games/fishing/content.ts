@@ -9,7 +9,7 @@ export interface Idol {
   swimStyle: SwimStyle
 }
 
-// Member colors from the official LIVE 4bit profile stylesheet (.b-c0 through .b-c15).
+// LIVE 4bit profile colors, except Gaku's light silver chosen from the user's reference.
 export const IDOLS: readonly Idol[] = [
   { id: 'iori', color: '#0D326F', name: '和泉一织', group: 'IDOLiSH7', affinity: -50, swimStyle: 'distant' },
   { id: 'yamato', color: '#67AF28', name: '二阶堂大和', group: 'IDOLiSH7', affinity: -30, swimStyle: 'distant' },
@@ -18,7 +18,7 @@ export const IDOLS: readonly Idol[] = [
   { id: 'sogo', color: '#856DAF', name: '逢坂壮五', group: 'IDOLiSH7', affinity: -50, swimStyle: 'distant' },
   { id: 'nagi', color: '#FFEB00', name: '六弥凪', group: 'IDOLiSH7', affinity: -40, swimStyle: 'distant' },
   { id: 'riku', color: '#E60039', name: '七濑陆', group: 'IDOLiSH7', affinity: -30, swimStyle: 'hesitant' },
-  { id: 'gaku', color: '#4D5C63', name: '八乙女乐', group: 'TRIGGER', affinity: -100, swimStyle: 'hostile' },
+  { id: 'gaku', color: '#D5D5D5', name: '八乙女乐', group: 'TRIGGER', affinity: -100, swimStyle: 'hostile' },
   { id: 'ten', color: '#B94F84', name: '九条天', group: 'TRIGGER', affinity: -100, swimStyle: 'hostile' },
   { id: 'ryunosuke', color: '#00516D', name: '十龙之介', group: 'TRIGGER', affinity: -100, swimStyle: 'hostile' },
   { id: 'momo', color: '#E62E8B', name: '百', group: 'Re:vale', affinity: 0, swimStyle: 'warm' },
@@ -34,12 +34,12 @@ export interface DialogueBeat {
   text: string
   /** 台词 expire automatically; 对话 wait for confirmation within an encounter. */
   mode?: 'line' | 'dialogue'
-  location?: 'shore' | 'water'
+  location?: 'shore' | 'water' | 'narration' | 'offscreen'
   /** Empty beats normally animate automatically; silent encounters still need acknowledgement. */
   waitForTap?: boolean
   /** Duration applies only to automatic beats, never to visible encounter dialogue. */
   durationMs?: number
-  event?: 'punch-shiro' | 'idol-leaves' | 'shiro-returns'
+  event?: 'punch-shiro' | 'idol-leaves' | 'shiro-returns' | 'wake-shiro' | 'shiro-exits' | 'ryo-exits'
   mood?: 'happy' | 'angry' | 'shy' | 'stunned' | 'nervous'
 }
 
@@ -58,6 +58,29 @@ export const INTRO_LINES: readonly string[] = [
 export const CAST_LINES: readonly DialogueBeat[] = [
   { speaker: 'shiro', text: '加油，了くん！', mode: 'line', location: 'shore', durationMs: 1800 },
   { speaker: 'ryo', text: '闭嘴！', mode: 'line', location: 'shore', durationMs: 1800, mood: 'angry' },
+]
+
+export const ENDING_LINES: readonly DialogueBeat[] = [
+  { text: '一天过去了', mode: 'dialogue', location: 'narration' },
+  { text: '月云了什么也没钓起来', mode: 'dialogue', location: 'narration' },
+  { text: '……', mode: 'dialogue', location: 'narration' },
+  { speaker: 'ryo', text: '到底什么意思？？！？', mode: 'dialogue', location: 'shore', mood: 'angry' },
+  { speaker: 'ryo', text: '这个游戏是在耍我吗？？！', mode: 'dialogue', location: 'shore' },
+  { speaker: 'ryo', text: '无聊！神经！好烦啊！！！', mode: 'dialogue', location: 'shore' },
+  { speaker: 'ryo', text: '游戏作者简直就是丧心病狂没有公德心。', mode: 'dialogue', location: 'shore' },
+  { speaker: 'ryo', text: '啊！！！！？！你说句话啊？？', mode: 'dialogue', location: 'shore' },
+  { text: '', event: 'wake-shiro', durationMs: 700 },
+  { speaker: 'shiro', text: '啊……？哦！结束了啊。', mode: 'dialogue', location: 'shore' },
+  { speaker: 'shiro', text: '果然是这样呢。', mode: 'dialogue', location: 'shore' },
+  { speaker: 'ryo', text: '？', mode: 'dialogue', location: 'shore' },
+  { speaker: 'shiro', text: '回去了吗？', mode: 'dialogue', location: 'shore' },
+  { speaker: 'ryo', text: '……😡', mode: 'dialogue', location: 'shore', mood: 'angry' },
+  { speaker: 'ryo', text: '好吧。', mode: 'dialogue', location: 'shore' },
+  { text: '', event: 'shiro-exits', durationMs: 1100 },
+  { speaker: 'ryo', text: '竟敢耍我，我会让你付出代价！！！', mode: 'dialogue', location: 'shore' },
+  { speaker: 'shiro', text: '了くん？你好慢啊- -', mode: 'dialogue', location: 'offscreen' },
+  { speaker: 'ryo', text: '你烦不烦？！', mode: 'dialogue', location: 'shore' },
+  { text: '', event: 'ryo-exits', durationMs: 1100 },
 ]
 
 export const ENCOUNTERS: Record<string, readonly DialogueBeat[]> = {
@@ -90,11 +113,9 @@ export const ENCOUNTERS: Record<string, readonly DialogueBeat[]> = {
     { speaker: 'idol', text: '啊，你是……月云了？', location: 'shore' },
     { speaker: 'crowd', text: 'riku！快回来！！！', location: 'water' },
     { speaker: 'ryo', text: '……', location: 'shore', durationMs: 1200 },
-    {
-      speaker: 'idol',
-      text: '呃，你好？总之谢谢你支持我们下单那么多周边……我先回去了！！！',
-      location: 'shore',
-    },
+    { speaker: 'idol', text: '呃，你好？总之，谢谢你下单了这么多周边支持我们……', location: 'shore' },
+    { speaker: 'idol', text: '……', location: 'shore' },
+    { speaker: 'idol', text: '我先回去了！！！', location: 'shore' },
     { text: '', event: 'idol-leaves', durationMs: 900 },
     { speaker: 'ryo', text: '……', location: 'shore', durationMs: 1200 },
     { speaker: 'ryo', text: '🎵', location: 'shore', durationMs: 1500, mood: 'happy' },
@@ -150,7 +171,7 @@ export const ENCOUNTERS: Record<string, readonly DialogueBeat[]> = {
   ],
   minami: [
     { text: '', durationMs: 700 },
-    { speaker: 'idol', text: '……', location: 'shore', durationMs: 1300 },
+    { speaker: 'idol', text: '^^', location: 'shore', durationMs: 1300 },
     { speaker: 'ryo', text: '？', location: 'shore', durationMs: 1400 },
     { text: '', event: 'idol-leaves', durationMs: 900 },
   ],

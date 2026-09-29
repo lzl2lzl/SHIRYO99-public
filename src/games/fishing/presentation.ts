@@ -128,3 +128,11 @@ export function skyResponse(timeOfDay: TimeOfDay): DialogueBeat {
     mood: timeOfDay === 'night' ? 'happy' : 'angry',
   }
 }
+
+export const SHIRO_GREETING: DialogueBeat = {
+  speaker: 'shiro', location: 'shore', text: 'hi😊', mode: 'line', durationMs: 1800,
+}
+
+export const SHIRO_DINNER: DialogueBeat = {
+  speaker: 'shiro', location: 'shore', text: '什么时候吃饭？', mode: 'line', durationMs: 1800,
+}

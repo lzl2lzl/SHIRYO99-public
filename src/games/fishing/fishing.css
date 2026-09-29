@@ -11,8 +11,8 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 .fishing-screen[data-time-of-day="night"] { --fishing-ink: #e1e7f3; background: #192039; }
+.fishing-screen[data-time-of-day="sunset"] { --fishing-ink: #553d50; background: #dfb1ab; }
 .fishing-header { height: 58px; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; padding: 0 10px; }
-.fishing-header h1 { font-size: 20px; line-height: 1.4; letter-spacing: .06em; text-align: center; font-weight: 800; }
 .fishing-screen button { min-height: 44px; border: 0; color: inherit; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .fishing-screen button:focus-visible { outline: 3px solid #bd693c; outline-offset: -3px; }
 .fishing-screen button:disabled { cursor: default; }
@@ -21,11 +21,15 @@
 .fishing-header button:active { background: #7ea8ad50; }
 .fishing-stage { position: relative; width: 100%; aspect-ratio: 390 / 600; container-type: inline-size; touch-action: manipulation; overflow: hidden; user-select: none; }
 .fishing-world { width: 100%; height: 100%; display: block; }
+.fishing-screen[data-phase="ending"] .fishing-stage { overflow: visible; }
+.fishing-screen[data-phase="ending"] .fishing-world { overflow: hidden; }
 .fishing-sea-input { position: absolute; inset: 30.7% 0 0; width: 100%; background: transparent; cursor: crosshair !important; padding: 0; }
 .fishing-sky-body { position: absolute; top: 3.4%; left: 4.6%; width: 14%; min-width: 44px; aspect-ratio: 1; padding: 0; background: transparent; border-radius: 50%; }
 .fishing-sky-body svg { display: block; width: 100%; height: 100%; }
 .fishing-sky-body:hover { transform: translateY(-1px); }
 .fishing-sky-body:active { transform: scale(.95); }
+.fishing-shiro-input { position: absolute; left: 84.1%; top: 12.667%; width: 15.64%; height: 14.667%; min-width: 44px; padding: 0; background: transparent; border-radius: 10px; }
+.fishing-shiro-input:not(:disabled):active { background: #f3f4e81a; }
 .fishing-count { position: absolute; bottom: 14px; left: 16px; color: #e0f0ec; font-size: 20px; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
 .fishing-count span { font-size: 13px; margin-left: 3px; }
 .fishing-time-toggle { position: absolute; right: 8px; bottom: 2px; min-width: 66px; padding: 0 10px; border-radius: 8px; background: transparent; color: #e0f0ec !important; font-size: 13px; }
@@ -54,7 +58,18 @@
 .fishing-speech.from-idol[data-tail-side="left"]::before { right: auto; left: -10px; transform: scaleX(-1); }
 .fishing-speech.from-water { top: 32.5%; left: 4%; }
 .fishing-speech.from-water::before { right: 20px; bottom: -9px; transform: rotate(90deg); }
-.fishing-speech.fishing-sky-response { top: 2%; left: 21%; width: max-content; padding-inline: 10px; pointer-events: none; }
+.fishing-speech.from-offscreen { top: 3%; right: 3%; }
+.fishing-speech.from-offscreen::before { right: -10px; top: 22px; bottom: auto; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.fishing-screen[data-phase="ending"] .fishing-speech.from-shore[data-speaker="shiro"]:not(.fishing-shiro-greeting),
+.fishing-screen[data-phase="ending"] .fishing-speech.from-offscreen { top: calc(12.667% - 8px); transform: translateY(-100%); }
+.fishing-speech.fishing-sky-response { top: 14%; right: 36%; width: max-content; padding-inline: 10px; pointer-events: none; }
+.fishing-sky-response[data-companion-speaker="ryo"] { top: auto; bottom: calc(86% + 8px); }
+.fishing-sky-response[data-companion-speaker="ryo"]::before { right: -8px; bottom: -8px; }
+.fishing-sky-response[data-companion-speaker="shiro"] { top: max(14%, calc(2% + 68px)); }
+.fishing-speech.fishing-shiro-greeting { width: max-content; pointer-events: none; }
+.fishing-shiro-greeting.is-dinner { top: 1%; }
+.fishing-shiro-greeting.is-dinner[data-companion-speaker="shiro"] { top: 28%; }
+.fishing-shiro-greeting.is-dinner[data-companion-speaker="shiro"]::before { top: -8px; right: -8px; bottom: auto; clip-path: polygon(0 25%, 100% 0, 0 100%); }
 .fishing-speaker { display: block; font-size: 12px; line-height: 1.5; font-weight: 700; color: #4e7074; margin-bottom: 4px; }
 .fishing-speech p { margin: 0; font-size: var(--fishing-dialogue-font, 15px); line-height: 1.5; line-break: strict; overflow-wrap: break-word; }
 .fishing-next { display: flex; justify-content: flex-end; margin-top: 6px; color: #526c64; }
@@ -64,6 +79,25 @@
 .fishing-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .is-background *, .is-background *::before { animation-play-state: paused !important; }
 @keyframes fishing-nervous { 50% { translate: 1px 0; } }
+.fishing-shiro.is-sleeping { transform: rotate(-7deg); }
+.fishing-sleep-mark { fill: #686278; font-size: 13px; font-weight: 600; }
+.fishing-shiro.is-waking { animation: fishing-wake 500ms ease-out 1; }
+@keyframes fishing-wake { 0% { transform: rotate(-7deg); } 35% { transform: translate(3px, -2px) rotate(5deg); } 100% { transform: none; } }
+.fishing-shiro.is-exiting, .fishing-ryo.is-exiting { transform: translateX(160px); opacity: 0; animation: fishing-walk-out 1000ms linear 1 both; }
+@keyframes fishing-walk-out {
+  0% { transform: translate(0, 0); opacity: 1; }
+  20% { transform: translate(32px, -2px); }
+  40% { transform: translate(64px, 0); }
+  60% { transform: translate(96px, -2px); }
+  80% { transform: translate(128px, 0); opacity: 1; }
+  100% { transform: translate(160px, 0); opacity: 0; }
+}
+.fishing-screen[data-phase="ended"] *, .fishing-screen[data-phase="ended"] *::before { animation: none !important; transition: none !important; }
+.fishing-screen[data-phase="aiming"] .fishing-shiro { transition: none; }
+.fishing-end-overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: #0c132b66; }
+.fishing-screen .fishing-replay { min-width: 176px; min-height: 56px; padding: 14px 28px; border-radius: 14px; background: #f3f4e8; color: #263749; font-size: 20px; font-weight: 700; box-shadow: 0 7px 24px #080d1b55; }
+.fishing-screen .fishing-replay:hover { background: #fffdf1; }
+.fishing-screen .fishing-replay:active { background: #e8e4da; }
 @media (min-width: 760px) {
   .fishing-screen { width: min(440px, calc((100dvh - 116px) * .65)); min-width: 320px; border-radius: 18px; box-shadow: 0 18px 54px #0006; }
 }

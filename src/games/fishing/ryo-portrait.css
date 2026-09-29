@@ -1,0 +1,39 @@
+.fishing-ryo-portrait { overflow: visible; }
+.fishing-ryo-parts { visibility: hidden; }
+.fishing-ryo-tail { transform-origin: 0 0; }
+
+/* Three synchronized, single-pass animations return to the untouched PNG. */
+.fishing-ryo-portrait[data-tail-active="true"] .fishing-ryo-original {
+  animation: fishing-ryo-hide-original 420ms linear 1;
+}
+.fishing-ryo-portrait[data-tail-active="true"] .fishing-ryo-parts {
+  animation: fishing-ryo-show-parts 420ms linear 1;
+}
+.fishing-ryo-portrait[data-tail-active="true"] .fishing-ryo-tail {
+  animation: fishing-ryo-tail-flick 420ms cubic-bezier(.22,.7,.25,1) 1;
+}
+.fishing-ryo-portrait[data-tail-active="true"][data-tail-fast="true"] :is(.fishing-ryo-original, .fishing-ryo-parts, .fishing-ryo-tail) {
+  animation-duration: 500ms;
+}
+.fishing-ryo-portrait[data-tail-active="true"][data-tail-fast="true"] .fishing-ryo-tail {
+  animation-name: fishing-ryo-tail-wake;
+  animation-timing-function: ease-in-out;
+}
+@keyframes fishing-ryo-hide-original { from, to { visibility: hidden; } }
+@keyframes fishing-ryo-show-parts { from, to { visibility: visible; } }
+@keyframes fishing-ryo-tail-flick {
+  0%, 100% { transform: rotate(0deg); }
+  18% { transform: rotate(-6deg); }
+  44% { transform: rotate(27deg); }
+}
+@keyframes fishing-ryo-tail-wake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(20deg); }
+  42% { transform: rotate(-12deg); }
+  66% { transform: rotate(22deg); }
+}
+.is-background .fishing-ryo-portrait * { animation-play-state: paused !important; }
+.reduced-motion .fishing-ryo-portrait * { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .fishing-ryo-portrait * { animation: none !important; }
+}

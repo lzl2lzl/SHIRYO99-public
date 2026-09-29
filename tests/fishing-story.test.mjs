@@ -73,7 +73,7 @@ function playEncounter(id) {
   return { game, trace, encounter: trace.filter((beat) => beat.kind === 'encounter') }
 }
 
-test('all sixteen encounters return to aiming, leave the basket empty, and deduplicate the encounter record', () => {
+test('sixteen unique encounters leave the basket empty, deduplicate repeats, and then begin the ending', () => {
   const game = createFishingGame(false, ['riku', 'riku', 'not-an-idol'])
   assert.deepEqual(game.metIds, ['riku'])
   assert.equal(IDOLS.length, 16)
@@ -82,23 +82,31 @@ test('all sixteen encounters return to aiming, leave the basket empty, and dedup
     [7, 3, 2, 4],
   )
 
+  const savedIds = [...game.metIds]
+  catchAtShore(game, 'riku')
+  runUntil(game, () => game.phase === 'aiming', 'release a repeated catch')
+  assert.deepEqual(game.metIds, savedIds)
+
   for (const idol of IDOLS) {
     const trace = catchAtShore(game, idol.id)
-    runUntil(game, () => game.phase === 'aiming', `release ${idol.id}`, trace)
+    const expectedPhase = game.metIds.length === 16 ? 'ending' : 'aiming'
+    runUntil(game, () => game.phase === expectedPhase, `release ${idol.id}`, trace)
     assert.ok(trace.some((beat) => beat.event === 'idol-leaves'), `${idol.name} returns to the water`)
     assert.equal(game.caughtId, null)
     assert.equal(game.release, null)
-    assert.equal(game.script, null)
-    assert.equal(game.speech, null)
+    if (expectedPhase === 'ending') {
+      assert.equal(game.script?.kind, 'ending')
+      assert.equal(game.speech?.text, '一天过去了')
+    } else {
+      assert.equal(game.script, null)
+      assert.equal(game.speech, null)
+    }
     assert.equal(game.shiroAway, false)
     assert.equal(game.metIds.filter((id) => id === idol.id).length, 1)
     assert.equal(basketCount(), 0)
   }
 
-  const savedIds = [...game.metIds]
-  catchAtShore(game, 'riku')
-  runUntil(game, () => game.phase === 'aiming', 'release a repeated catch')
-  assert.deepEqual(game.metIds, savedIds)
+  assert.equal(game.phase, 'ending')
   assert.equal(game.casts, 17)
   assert.deepEqual(new Set(game.metIds), new Set(IDOLS.map((idol) => idol.id)))
 })
@@ -151,6 +159,38 @@ test('Riku hears one anonymous underwater crowd and leaves before Ryo finishes h
   assert.equal(encounter[humming].hasLeft, true)
 })
 
+test('Riku waits for separate confirmation of thanks, silence and goodbye before returning underwater', () => {
+  const game = createFishingGame(false)
+  const lines = ['呃，你好？总之，谢谢你下单了这么多周边支持我们……', '……', '我先回去了！！！']
+  catchAtShore(game, 'riku')
+  runUntil(game, () => game.speech?.text === lines[0], 'reach Riku three-part reply')
+
+  for (const [index, text] of lines.entries()) {
+    const beat = game.speech
+    assert.equal(beat?.speaker, 'idol')
+    assert.equal(beat?.text, text)
+    assert.equal(isWaitingForTap(game), true)
+    runWithoutTapping(game, 20)
+    assert.equal(game.speech, beat, 'each individual line stays until acknowledged')
+    assert.equal(game.hasLeft, false, 'Riku stays ashore until the goodbye is acknowledged')
+    assert.equal(game.release, null)
+    assert.equal(castLine(game), false)
+    assert.equal(advanceSpeech(game, false), false)
+    assert.equal(advanceSpeech(game, true), true)
+    if (index < lines.length - 1) {
+      assert.equal(game.speech?.speaker, 'idol')
+      assert.equal(game.speech?.text, lines[index + 1])
+      assert.equal(game.hasLeft, false)
+      assert.equal(advanceSpeech(game, true), false, 'the following line cannot be swallowed by a double tap')
+    }
+  }
+
+  assert.equal(game.speech?.event, 'idol-leaves')
+  assert.equal(game.hasLeft, true)
+  assert.notEqual(game.release, null)
+  runUntil(game, () => game.phase === 'aiming', 'finish Ryo response after Riku goodbye')
+})
+
 test('Momo makes Shiro stay away after the punch until his explicit return after Momo leaves', () => {
   const { encounter } = playEncounter('momo')
   const punch = encounter.findIndex((beat) => beat.event === 'punch-shiro')
@@ -190,6 +230,30 @@ test('only Haruka causes the specified embarrassed reply; the other ZOOL encount
   for (const id of ['toma', 'minami', 'tora']) {
     assert.ok(playEncounter(id).encounter.every((beat) => beat.mood !== 'shy'))
   }
+})
+
+test('Minami smiling silence remains a manual line followed by Ryo question mark', () => {
+  const game = createFishingGame(false)
+  catchAtShore(game, 'minami')
+  runUntil(game, () => game.speech?.text === '^^', 'reach Minami smiling silence')
+  assert.equal(game.speech?.speaker, 'idol')
+  assert.equal(isWaitingForTap(game), true)
+  const smilingSilence = game.speech
+  runWithoutTapping(game, 20)
+  assert.equal(game.speech, smilingSilence)
+  assert.equal(game.hasLeft, false)
+  assert.equal(advanceSpeech(game, false), false)
+  assert.equal(advanceSpeech(game, true), true)
+  assert.equal(game.speech?.speaker, 'ryo')
+  assert.equal(game.speech?.text, '？')
+  assert.equal(isWaitingForTap(game), true)
+  assert.equal(advanceSpeech(game, true), false)
+  runWithoutTapping(game, 20)
+  assert.equal(game.speech?.text, '？')
+  assert.equal(game.hasLeft, false)
+  assert.equal(advanceSpeech(game, true), true)
+  assert.equal(game.speech?.event, 'idol-leaves')
+  runUntil(game, () => game.phase === 'aiming', 'complete Minami smiling encounter')
 })
 
 test('the introduction contains the exact three opening lines and two instructions, completes, and can replay', () => {
@@ -369,7 +433,7 @@ test('the six mutually silent encounters show no narration and wait for a tap be
 test('every encounter displays only the original supplied lines, with all added narration removed', () => {
   const originalLines = {
     iori: [], yamato: [], mitsuki: [], tamaki: [], sogo: [], nagi: [],
-    riku: ['啊，你是……月云了？', 'riku！快回来！！！', '……', '呃，你好？总之谢谢你支持我们下单那么多周边……我先回去了！！！', '……', '🎵'],
+    riku: ['啊，你是……月云了？', 'riku！快回来！！！', '……', '呃，你好？总之，谢谢你下单了这么多周边支持我们……', '……', '我先回去了！！！', '……', '🎵'],
     gaku: ['哈哈，好想打个电话提醒你父亲注意心脏~'],
     ten: ['哈哈，虚伪的家伙你也有今天！'],
     ryunosuke: ['……', '所以我说过偶像也不过如此，，，！哼！'],
@@ -377,7 +441,7 @@ test('every encounter displays only the original supplied lines, with all added 
     yuki: ['哈哈，想不到你有一天也会落到我手里。哈哈！真没用~'],
     haruka: ['啊，了桑！今天开心吗！', '怎么可能！'],
     toma: ['了桑！今天天气真好啊！', '哦。', '我看起来像瞎子吗？？？'],
-    minami: ['……', '？'],
+    minami: ['^^', '？'],
     tora: ['……嗨。', '……', '我才没有想跟你打招呼呢？？'],
   }
   for (const idol of IDOLS) {
@@ -396,6 +460,6 @@ test('release destinations lie inside the swimming area rather than using an ido
     const { x, y } = game.release.to
     assert.ok(x >= FISH_BOUNDS.left && x <= FISH_BOUNDS.right)
     assert.ok(y >= FISH_BOUNDS.top && y <= FISH_BOUNDS.bottom)
-    runUntil(game, () => game.phase === 'aiming', `finish release ${idol.id}`)
+    runUntil(game, () => game.phase === 'aiming' || game.phase === 'ending', `finish release ${idol.id}`)
   }
 })
