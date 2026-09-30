@@ -3,6 +3,11 @@ import { FISH_HITBOX, WORLD_HEIGHT, WORLD_WIDTH, type Point } from './model.ts'
 
 export type TimeOfDay = 'day' | 'night'
 
+/** Presentation-only hint; the encounter roster remains the sole source of progress. */
+export function shouldHighlightIdol(id: string, metIds: readonly string[], enabled: boolean): boolean {
+  return enabled && !metIds.includes(id)
+}
+
 /** Keep the bubble beside the speaking name, outside its highlighted catch box. */
 export function idolBubbleAnchor(point: Point, preferredWidth = WORLD_WIDTH * 0.39) {
   const margin = 12
@@ -13,6 +18,19 @@ export function idolBubbleAnchor(point: Point, preferredWidth = WORLD_WIDTH * 0.
   const left = side === 'right'
     ? point.x - FISH_HITBOX.halfWidth - gap - width
     : point.x + FISH_HITBOX.halfWidth + gap
+  const top = Math.max(86, Math.min(WORLD_HEIGHT - 86, point.y))
+  return { left, top, width, side, tailOffset: point.y - top }
+}
+
+/** The same nearby speech geometry, with space for Shiro's existing 61 px portrait. */
+export function shiroBubbleAnchor(point: Point, preferredWidth = WORLD_WIDTH * 0.45) {
+  const margin = 12
+  const gap = 12
+  const halfWidth = 30.5
+  const side = point.x >= WORLD_WIDTH / 2 ? 'right' : 'left'
+  const room = (side === 'right' ? point.x : WORLD_WIDTH - point.x) - halfWidth - gap - margin
+  const width = Math.min(preferredWidth, room)
+  const left = side === 'right' ? point.x - halfWidth - gap - width : point.x + halfWidth + gap
   const top = Math.max(86, Math.min(WORLD_HEIGHT - 86, point.y))
   return { left, top, width, side, tailOffset: point.y - top }
 }
@@ -135,4 +153,12 @@ export const SHIRO_GREETING: DialogueBeat = {
 
 export const SHIRO_DINNER: DialogueBeat = {
   speaker: 'shiro', location: 'shore', text: '什么时候吃饭？', mode: 'line', durationMs: 1800,
+}
+
+export const RYO_GREETING: DialogueBeat = {
+  speaker: 'ryo', location: 'shore', text: '啦啦啦~', mode: 'line', durationMs: 1800,
+}
+
+export const RYO_ENDING_REPLY: DialogueBeat = {
+  speaker: 'ryo', location: 'shore', text: '看什么看！', mode: 'line', durationMs: 1800,
 }

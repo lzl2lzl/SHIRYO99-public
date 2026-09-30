@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CAST_LINES, ENCOUNTERS, INTRO_LINES, needsConfirmation } from '../src/games/fishing/content.ts'
-import { dialoguePages, idolBubbleAnchor, SHIRO_DINNER, skyResponse } from '../src/games/fishing/presentation.ts'
+import { CAST_LINES, ENCOUNTERS, ENDING_LINES, ENDING_CATCH_LINES, INTRO_LINES, needsConfirmation } from '../src/games/fishing/content.ts'
+import { dialoguePages, idolBubbleAnchor, shiroBubbleAnchor, SHIRO_DINNER, skyResponse } from '../src/games/fishing/presentation.ts'
 import { FISH_BOUNDS, FISH_HITBOX, WORLD_WIDTH, WORLD_HEIGHT } from '../src/games/fishing/model.ts'
 
 const splitGraphemes = (text) => Array.from(new Intl.Segmenter('zh', {granularity: 'grapheme'}).segment(text), part => part.segment)
@@ -28,7 +28,7 @@ function wrappedLines(text, maxWidth, measure) {
 }
 
 test('width-based dialogue pages preserve every original character and fit their line budget', () => {
-  for (const text of [...INTRO_LINES, ...Object.values(ENCOUNTERS).flat().map(beat => beat.text), '🎵'.repeat(70)]) {
+  for (const text of [...INTRO_LINES, ...Object.values(ENCOUNTERS).flat().map(beat => beat.text), ...ENDING_LINES.map(beat => beat.text), ...ENDING_CATCH_LINES.map(beat => beat.text), '🎵'.repeat(70)]) {
     const pages = dialoguePages(text)
     assert.equal(pages.join(''), text)
     assert.ok(pages.every(page => wrappedLines(page, 13, unitMeasure) <= 3))
@@ -148,6 +148,24 @@ test('name-anchored dialogue follows coordinates and keeps its box clear of name
       assert.equal(anchor.top + anchor.tailOffset, y)
       if (anchor.side === 'right') assert.ok(anchor.left + anchor.width <= x - FISH_HITBOX.halfWidth - 12)
       else assert.ok(anchor.left >= x + FISH_HITBOX.halfWidth + 12)
+    }
+  }
+})
+
+test('Shiro speech follows his swimming or hooked portrait and fits a mobile viewport', () => {
+  for (const point of [{ x: 180, y: 300 }, { x: 260, y: 370 }, { x: 228, y: 208 }]) {
+    for (const viewport of [320, 390, 440]) {
+      const anchor = shiroBubbleAnchor(point)
+      assert.ok(anchor.left >= 12 && anchor.left + anchor.width <= WORLD_WIDTH - 12)
+      assert.equal(anchor.top + anchor.tailOffset, point.y)
+      if (anchor.side === 'right') assert.ok(anchor.left + anchor.width <= point.x - 30.5 - 12)
+      else assert.ok(anchor.left >= point.x + 30.5 + 12)
+      for (const beat of [...ENDING_LINES, ...ENDING_CATCH_LINES].filter(beat => beat.speaker === 'shiro' && beat.location === 'water')) {
+        const maxWidth = anchor.width / WORLD_WIDTH * viewport - 26
+        const pages = dialoguePages(beat.text, { maxWidth, maxLines: 3, measure: pixelMeasure })
+        assert.equal(pages.join(''), beat.text)
+        assert.ok(pages.every(page => wrappedLines(page, maxWidth, pixelMeasure) <= 3))
+      }
     }
   }
 })

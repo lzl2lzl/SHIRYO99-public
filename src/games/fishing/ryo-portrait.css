@@ -19,6 +19,20 @@
   animation-name: fishing-ryo-tail-wake;
   animation-timing-function: ease-in-out;
 }
+.fishing-ryo-portrait[data-tail-active="true"][data-tail-action="pull"] :is(.fishing-ryo-original, .fishing-ryo-parts, .fishing-ryo-tail) {
+  animation-duration: 1100ms;
+}
+.fishing-ryo-portrait[data-tail-active="true"][data-tail-action="pull"] .fishing-ryo-tail {
+  animation-name: fishing-ryo-tail-pull;
+  animation-timing-function: ease-in-out;
+}
+.fishing-ryo-portrait[data-tail-active="true"][data-tail-action="dunk"] :is(.fishing-ryo-original, .fishing-ryo-parts, .fishing-ryo-tail) {
+  animation-duration: 1000ms;
+}
+.fishing-ryo-portrait[data-tail-active="true"][data-tail-action="dunk"] .fishing-ryo-tail {
+  animation-name: fishing-ryo-tail-dunk;
+  animation-timing-function: cubic-bezier(.22,.7,.25,1);
+}
 @keyframes fishing-ryo-hide-original { from, to { visibility: hidden; } }
 @keyframes fishing-ryo-show-parts { from, to { visibility: visible; } }
 @keyframes fishing-ryo-tail-flick {
@@ -31,6 +45,17 @@
   20% { transform: rotate(20deg); }
   42% { transform: rotate(-12deg); }
   66% { transform: rotate(22deg); }
+}
+@keyframes fishing-ryo-tail-pull {
+  0%, 100% { transform: scaleX(1); }
+  /* Reach Shiro beyond the right edge, then keep contact as he returns. */
+  40.909091% { transform: scaleX(8.2); }
+  95% { transform: scaleX(2.1); }
+}
+@keyframes fishing-ryo-tail-dunk {
+  0%, 100% { transform: rotate(0deg) scaleX(1); }
+  30% { transform: rotate(12deg) scaleX(1.2); }
+  70% { transform: rotate(145deg) scaleX(2.3); }
 }
 .is-background .fishing-ryo-portrait * { animation-play-state: paused !important; }
 .reduced-motion .fishing-ryo-portrait * { animation: none !important; }

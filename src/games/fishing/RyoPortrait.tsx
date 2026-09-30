@@ -6,14 +6,16 @@ const PORTRAIT = `${import.meta.env.BASE_URL}assets/characters/ryo/fishing-no-gr
 // Source-image coordinates: keep the torso edge in front of the moving tail.
 const TAIL = 'M846 653L920 626H958V557H1060V790H865L853 750L848 731L846 700Z'
 
-/** A false → true edge plays one tail flick; an unchanged true value never loops. */
-export function RyoPortrait({ active, fast = false }: { active: boolean; fast?: boolean }) {
+/** Each activation or new action plays once; an unchanged action never loops. */
+export function RyoPortrait({ active, fast = false, action }: { active: boolean; fast?: boolean; action?: 'pull' | 'dunk' }) {
   const id = useId()
   const tailClip = `${id}-tail`
   const bodyMask = `${id}-body`
+  // Restart the visibility layers together when consecutive story actions differ.
+  const motion = action ?? (fast ? 'wake' : 'flick')
 
   return (
-    <svg className="fishing-ryo-portrait" data-tail-active={active} data-tail-fast={fast}
+    <svg key={motion} className="fishing-ryo-portrait" data-tail-active={active || Boolean(action)} data-tail-fast={fast} data-tail-action={action}
       x="253" y="76" width="79" height="88" viewBox="467 190 566 644" preserveAspectRatio="xMidYMax meet">
       <defs>
         <clipPath id={tailClip} clipPathUnits="userSpaceOnUse"><path d={TAIL} /></clipPath>

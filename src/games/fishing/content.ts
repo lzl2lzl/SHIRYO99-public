@@ -40,6 +40,7 @@ export interface DialogueBeat {
   /** Duration applies only to automatic beats, never to visible encounter dialogue. */
   durationMs?: number
   event?: 'punch-shiro' | 'idol-leaves' | 'shiro-returns' | 'wake-shiro' | 'shiro-exits' | 'ryo-exits'
+    | 'pull-shiro' | 'dunk-shiro' | 'fish-shiro' | 'leave-together'
   mood?: 'happy' | 'angry' | 'shy' | 'stunned' | 'nervous'
 }
 
@@ -75,12 +76,28 @@ export const ENDING_LINES: readonly DialogueBeat[] = [
   { speaker: 'ryo', text: '？', mode: 'dialogue', location: 'shore' },
   { speaker: 'shiro', text: '回去了吗？', mode: 'dialogue', location: 'shore' },
   { speaker: 'ryo', text: '……😡', mode: 'dialogue', location: 'shore', mood: 'angry' },
-  { speaker: 'ryo', text: '好吧。', mode: 'dialogue', location: 'shore' },
   { text: '', event: 'shiro-exits', durationMs: 1100 },
-  { speaker: 'ryo', text: '竟敢耍我，我会让你付出代价！！！', mode: 'dialogue', location: 'shore' },
-  { speaker: 'shiro', text: '了くん？你好慢啊- -', mode: 'dialogue', location: 'offscreen' },
-  { speaker: 'ryo', text: '你烦不烦？！', mode: 'dialogue', location: 'shore' },
-  { text: '', event: 'ryo-exits', durationMs: 1100 },
+  { speaker: 'ryo', text: '你给我回来？！！！', mode: 'dialogue', location: 'shore' },
+  { text: '', event: 'pull-shiro', durationMs: 1100 },
+  { speaker: 'ryo', text: '我钓不到鱼。', mode: 'dialogue', location: 'shore' },
+  { speaker: 'shiro', text: '啊？对哦，哈哈。', mode: 'dialogue', location: 'shore' },
+  { speaker: 'ryo', text: '竟敢嘲笑我！', mode: 'dialogue', location: 'shore' },
+  { text: '', event: 'dunk-shiro', durationMs: 1000 },
+  { speaker: 'ryo', text: '你给我下去。', mode: 'dialogue', location: 'shore' },
+  { speaker: 'shiro', text: '欸，还可以这样？', mode: 'dialogue', location: 'water' },
+  { speaker: 'ryo', text: '你快咬钩，不然小心我淹死你。', mode: 'dialogue', location: 'shore' },
+  { speaker: 'shiro', text: '我会游泳。', mode: 'dialogue', location: 'water' },
+  { text: '现在，可以对宇都木桑下钩了~', mode: 'dialogue', location: 'narration', event: 'fish-shiro' },
+]
+
+export const ENDING_CATCH_LINES: readonly DialogueBeat[] = [
+  { speaker: 'shiro', text: '呃', mode: 'dialogue', location: 'water' },
+  { speaker: 'ryo', text: '哈哈！', mode: 'dialogue', location: 'shore', mood: 'happy' },
+  { speaker: 'shiro', text: '我饿了，可以回去吃饭了吗？', mode: 'dialogue', location: 'water' },
+  { speaker: 'ryo', text: '好吧。', mode: 'dialogue', location: 'shore' },
+  { speaker: 'shiro', text: '我要吃鱼料理。', mode: 'dialogue', location: 'water' },
+  { speaker: 'ryo', text: '哦', mode: 'dialogue', location: 'shore' },
+  { text: '', event: 'leave-together', durationMs: 1400 },
 ]
 
 export const ENCOUNTERS: Record<string, readonly DialogueBeat[]> = {

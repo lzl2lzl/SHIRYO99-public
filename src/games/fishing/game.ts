@@ -1,7 +1,8 @@
-import { CAST_LINES, ENCOUNTERS, ENDING_LINES, IDOLS, INTRO_LINES, needsConfirmation, type DialogueBeat } from './content.ts'
+import { CAST_LINES, ENCOUNTERS, ENDING_CATCH_LINES, ENDING_LINES, IDOLS, INTRO_LINES, needsConfirmation, type DialogueBeat } from './content.ts'
 import { FISH_BOUNDS, HOOK_ORIGIN, createFish, firstCollision, hookPoint, idleAngle, maxHookLength, stepFish, type FishState, type Point } from './model.ts'
 
 export type FishingPhase = 'intro' | 'aiming' | 'casting' | 'reeling' | 'landing' | 'encounter' | 'releasing' | 'ending' | 'ended'
+export type EndingFishing = 'inactive' | 'aiming' | 'casting' | 'reeling' | 'caught'
 type ScriptKind = 'intro' | 'cast' | 'encounter' | 'ending'
 type Script = { kind: ScriptKind; beats: readonly DialogueBeat[]; index: number; elapsed: number }
 
@@ -22,6 +23,10 @@ export interface FishingGame {
   shiroExiting: boolean
   ryoExiting: boolean
   shiroSleeping: boolean
+  endingFishing: EndingFishing
+  shiroPosition: Point | null
+  shiroHooked: boolean
+  shiroSwimTime: number
   mood: DialogueBeat['mood'] | null
   hasLeft: boolean
   release: { from: Point; to: Point; elapsed: number } | null
@@ -35,6 +40,56 @@ const CAST_SPEED = 190
 const REEL_SPEED = 210
 const RELEASE_SECONDS = 1.1
 const TAP_GUARD_SECONDS = 0.35
+const SHIRO_SHORE: Readonly<Point> = { x: 357, y: 120 }
+const SHIRO_EXIT: Readonly<Point> = { x: 510, y: 120 }
+const SHIRO_WATER: Readonly<Point> = { x: 220, y: 300 }
+const SHIRO_HOOK_OFFSET = 35
+const smooth = (progress: number) => progress * progress * (3 - 2 * progress)
+
+function beatProgress(game: FishingGame): number {
+  if (!game.script || !game.speech) return 0
+  return Math.min(1, game.script.elapsed * 1000 / speechDuration(game.speech, game.script.kind))
+}
+
+/** Apply this horizontal offset to Ryo, the rod and both line endpoints when they leave together. */
+export function getDepartureOffset(game: FishingGame): number {
+  if (game.phase === 'ended') return 180
+  return game.speech?.event === 'leave-together' ? smooth(beatProgress(game)) * 180 : 0
+}
+
+/** One world-space portrait center for rendering, dialogue anchors and the catch target. Rotation is degrees. */
+export function getShiroPose(game: FishingGame): Point & { rotation: number } {
+  const event = game.speech?.event
+  const progress = beatProgress(game)
+  const eased = smooth(progress)
+  if (event === 'pull-shiro') {
+    const pulling = Math.max(0, Math.min(1, ((game.script?.elapsed ?? 0) - 0.45) / 0.65))
+    return {
+      x: SHIRO_EXIT.x + (SHIRO_SHORE.x - SHIRO_EXIT.x) * smooth(pulling),
+      y: SHIRO_SHORE.y + Math.sin(pulling * Math.PI) * 10,
+      rotation: pulling === 0 ? 0 : Math.sin(pulling * Math.PI) * -16,
+    }
+  }
+  if (event === 'dunk-shiro') {
+    const elapsed = game.script?.elapsed ?? 0
+    if (elapsed < 0.3) return { x: SHIRO_SHORE.x + elapsed / 0.3 * 10, y: SHIRO_SHORE.y - elapsed / 0.3 * 3, rotation: elapsed / 0.3 * 8 }
+    const flight = Math.min(1, (elapsed - 0.3) / 0.7)
+    return {
+      x: SHIRO_SHORE.x + 10 + (SHIRO_WATER.x - SHIRO_SHORE.x - 10) * smooth(flight),
+      y: SHIRO_SHORE.y - 3 + (SHIRO_WATER.y - SHIRO_SHORE.y + 3) * smooth(flight) - Math.sin(flight * Math.PI) * 65,
+      rotation: (1 - flight) * 8 - Math.sin(flight * Math.PI) * 32,
+    }
+  }
+  if (game.shiroPosition) return {
+    x: game.shiroPosition.x + getDepartureOffset(game), y: game.shiroPosition.y,
+    rotation: game.shiroHooked ? -8 : Math.sin(game.shiroSwimTime * 0.9) * 5,
+  }
+  if (game.shiroExiting) {
+    const exit = event === 'shiro-exits' ? eased : 1
+    return { x: SHIRO_SHORE.x + (SHIRO_EXIT.x - SHIRO_SHORE.x) * exit, y: SHIRO_SHORE.y, rotation: 0 }
+  }
+  return { ...SHIRO_SHORE, rotation: 0 }
+}
 
 export function createFishingGame(showIntro: boolean, metIds: string[] = [], endingCompleted = false): FishingGame {
   const game: FishingGame = {
@@ -43,6 +98,7 @@ export function createFishingGame(showIntro: boolean, metIds: string[] = [], end
     metIds: [...new Set(metIds.filter((id) => IDOLS.some((idol) => idol.id === id)))],
     speech: null, script: null, castSpeechDone: true, shiroAway: false, mood: null,
     shiroExiting: false, ryoExiting: false, shiroSleeping: false,
+    endingFishing: 'inactive', shiroPosition: null, shiroHooked: false, shiroSwimTime: 0,
     hasLeft: false, release: null, revision: 0, introCompleted: !showIntro, inputLockedUntil: 0,
   }
   if (hasMetEveryone(game)) {
@@ -72,6 +128,10 @@ function startEnding(game: FishingGame) {
   game.shiroExiting = false
   game.ryoExiting = false
   game.shiroSleeping = true
+  game.endingFishing = 'inactive'
+  game.shiroPosition = null
+  game.shiroHooked = false
+  game.shiroSwimTime = 0
   game.length = REST_LENGTH
   game.hook = hookPoint(game.angle, REST_LENGTH)
   startScript(game, 'ending', ENDING_LINES)
@@ -99,6 +159,15 @@ function enterBeat(game: FishingGame) {
   if (beat?.event === 'wake-shiro') game.shiroSleeping = false
   if (beat?.event === 'shiro-exits') game.shiroExiting = true
   if (beat?.event === 'ryo-exits') game.ryoExiting = true
+  if (beat?.event === 'pull-shiro') {
+    game.shiroExiting = false
+    game.shiroPosition = { ...SHIRO_EXIT }
+  }
+  if (beat?.event === 'dunk-shiro') game.shiroPosition = { ...SHIRO_SHORE }
+  if (beat?.event === 'leave-together') {
+    game.shiroExiting = true
+    game.ryoExiting = true
+  }
   game.revision++
 }
 
@@ -145,8 +214,16 @@ function finishScript(game: FishingGame, kind: ScriptKind) {
     game.phase = 'releasing'
     if (!game.release) backToAiming(game)
   } else if (kind === 'ending') {
-    game.phase = 'ended'
-    game.shiroSleeping = false
+    if (game.endingFishing === 'caught') {
+      game.phase = 'ended'
+      game.shiroSleeping = false
+      game.shiroPosition = null
+    } else {
+      game.endingFishing = 'aiming'
+      game.length = REST_LENGTH
+      game.angle = idleAngle(game.time)
+      game.hook = hookPoint(game.angle, REST_LENGTH)
+    }
   }
   game.revision++
 }
@@ -174,6 +251,12 @@ export function canGreetShiro(game: FishingGame, hasOtherBubble = false): boolea
     && game.script === null && !hasOtherBubble
 }
 
+/** During the ending, a portrait response may accompany (but never advance) its dialogue. */
+export function canGreetRyo(game: FishingGame, hasOtherBubble = false): boolean {
+  return game.phase !== 'ended' && !game.ryoExiting && !hasOtherBubble
+    && (game.phase === 'ending' || game.script === null)
+}
+
 export function advanceSpeech(game: FishingGame, manual = true): boolean {
   const script = game.script
   const speech = game.speech
@@ -182,6 +265,11 @@ export function advanceSpeech(game: FishingGame, manual = true): boolean {
     if (!canAdvanceSpeech(game)) return false
     game.inputLockedUntil = game.time + TAP_GUARD_SECONDS
   } else if (isWaitingForTap(game) || script.elapsed * 1000 < speechDuration(speech, script.kind)) return false
+  if (speech.event === 'pull-shiro') game.shiroPosition = null
+  if (speech.event === 'dunk-shiro') {
+    game.shiroPosition = { ...SHIRO_WATER }
+    game.shiroSwimTime = 0
+  }
   script.index++
   script.elapsed = 0
   if (script.index >= script.beats.length) finishScript(game, script.kind)
@@ -197,6 +285,16 @@ export function startIntroduction(game: FishingGame) {
 }
 
 export function castLine(game: FishingGame) {
+  if (game.phase === 'ending') {
+    if (game.endingFishing !== 'aiming' || game.script || game.time < game.inputLockedUntil) return false
+    game.endingFishing = 'casting'
+    game.length = REST_LENGTH
+    game.hook = hookPoint(game.angle, REST_LENGTH)
+    game.shiroHooked = false
+    game.casts++
+    game.revision++
+    return true
+  }
   if (game.phase !== 'aiming' || game.time < game.inputLockedUntil) return false
   game.phase = 'casting'
   game.length = REST_LENGTH
@@ -235,6 +333,57 @@ function landCatch(game: FishingGame) {
   game.revision++
 }
 
+function tickEndingFishing(game: FishingGame, delta: number) {
+  const event = game.speech?.event
+  if (event === 'pull-shiro' || event === 'dunk-shiro') {
+    const { x, y } = getShiroPose(game)
+    game.shiroPosition = { x, y }
+  } else if (game.shiroPosition && !game.shiroHooked) {
+    game.shiroSwimTime += delta
+    game.shiroPosition = {
+      x: SHIRO_WATER.x + Math.sin(game.shiroSwimTime * 0.4) * 40,
+      y: SHIRO_WATER.y + (1 - Math.cos(game.shiroSwimTime * 0.3)) * 35,
+    }
+  }
+  if (game.endingFishing === 'aiming') {
+    game.angle = idleAngle(game.time)
+    game.length = REST_LENGTH
+    game.hook = hookPoint(game.angle, REST_LENGTH)
+  } else if (game.endingFishing === 'casting') {
+    const nextLength = Math.min(maxHookLength(game.angle), game.length + CAST_SPEED * delta)
+    const next = hookPoint(game.angle, nextLength)
+    const pose = getShiroPose(game)
+    // The ending has one target; the sixteen idol labels cannot intercept this cast.
+    const hit = firstCollision(game.hook, next, [{ id: 'shiro', ...pose, phase: 0, heading: 0, style: 'quiet' }])
+    if (hit) {
+      game.shiroHooked = true
+      game.hook = hit.point
+      game.length = Math.hypot(hit.point.x - HOOK_ORIGIN.x, hit.point.y - HOOK_ORIGIN.y)
+      game.endingFishing = 'reeling'
+      game.shiroPosition = { x: game.hook.x, y: game.hook.y + SHIRO_HOOK_OFFSET }
+      game.revision++
+    } else {
+      game.length = nextLength
+      game.hook = next
+      if (nextLength >= maxHookLength(game.angle)) {
+        game.endingFishing = 'reeling'
+        game.revision++
+      }
+    }
+  } else if (game.endingFishing === 'reeling') {
+    game.length = Math.max(REST_LENGTH, game.length - REEL_SPEED * delta)
+    game.hook = hookPoint(game.angle, game.length)
+    if (game.shiroHooked) game.shiroPosition = { x: game.hook.x, y: game.hook.y + SHIRO_HOOK_OFFSET }
+    if (game.length <= REST_LENGTH) {
+      if (game.shiroHooked) {
+        game.endingFishing = 'caught'
+        startScript(game, 'ending', ENDING_CATCH_LINES)
+      } else game.endingFishing = 'aiming'
+      game.revision++
+    }
+  }
+}
+
 export function tickFishingGame(game: FishingGame, dt: number, reducedMotion = false) {
   if (game.phase === 'ended' || !Number.isFinite(dt) || dt <= 0) return
   const delta = Math.min(dt, 0.05)
@@ -257,6 +406,11 @@ export function tickFishingGame(game: FishingGame, dt: number, reducedMotion = f
   if (game.script && game.speech) {
     game.script.elapsed += delta
     if (!isWaitingForTap(game) && game.script.elapsed * 1000 >= speechDuration(game.speech, game.script.kind)) advanceSpeech(game, false)
+  }
+
+  if (game.phase === 'ending') {
+    tickEndingFishing(game, delta)
+    return
   }
 
   if (game.phase === 'aiming' || game.phase === 'intro') {

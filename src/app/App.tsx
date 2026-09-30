@@ -39,7 +39,11 @@ export function App() {
           </a>
         ))}
       </nav>
-      <footer className="lobby-footer">非官方同人小游戏。角色权益归原权利方所有。</footer>
+      <footer className="lobby-footer">
+        <p>非官方同人小游戏。角色权益归原权利方所有。</p>
+        <p>联系作者：小红书@并不知道什么叫做可爱</p>
+        <p>立绘感谢：蒲绒绒</p>
+      </footer>
     </main>
   )
 }

@@ -30,8 +30,16 @@
 .fishing-sky-body:active { transform: scale(.95); }
 .fishing-shiro-input { position: absolute; left: 84.1%; top: 12.667%; width: 15.64%; height: 14.667%; min-width: 44px; padding: 0; background: transparent; border-radius: 10px; }
 .fishing-shiro-input:not(:disabled):active { background: #f3f4e81a; }
-.fishing-count { position: absolute; bottom: 14px; left: 16px; color: #e0f0ec; font-size: 20px; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
+.fishing-ryo-input { position: absolute; left: 64.87%; top: 12.667%; width: 17%; height: 14.667%; min-width: 44px; padding: 0; background: transparent; border-radius: 10px; }
+.fishing-ryo-input:not(:disabled):active { background: #f3f4e81a; }
+.fishing-screen .fishing-count { position: absolute; bottom: 2px; left: 6px; min-width: 78px; padding: 0 10px; display: flex; align-items: center; color: #e0f0ec; border-radius: 8px; background: transparent; font-size: 20px; line-height: 1; font-variant-numeric: tabular-nums; transition: background-color 150ms ease; }
 .fishing-count span { font-size: 13px; margin-left: 3px; }
+.fishing-count[aria-pressed="true"] { background: #b7e5dc1c; }
+.fishing-count:not(:disabled):hover { background: #b7e5dc28; }
+.fishing-count:not(:disabled):active { background: #b7e5dc40; }
+.fishing-count:disabled { opacity: .6; }
+.fishing-hint-mark { width: 13px; height: 13px; margin-right: 7px; fill: none; stroke: currentColor; stroke-width: 1.2px; }
+.fishing-count[aria-pressed="true"] .fishing-hint-mark { fill: #f3f4e8; stroke: #f3f4e8; }
 .fishing-time-toggle { position: absolute; right: 8px; bottom: 2px; min-width: 66px; padding: 0 10px; border-radius: 8px; background: transparent; color: #e0f0ec !important; font-size: 13px; }
 .fishing-time-toggle:hover { background: #b7e5dc20; }
 .fishing-time-toggle:active { background: #b7e5dc30; }
