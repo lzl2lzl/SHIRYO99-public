@@ -13,7 +13,6 @@ const without = id => allIds.filter(candidate => candidate !== id)
 function wait(game, seconds) {
   for (let frame = 0; frame < Math.ceil(seconds / 0.05); frame++) {
     tickFishingGame(game, 0.05)
-    assert.equal(basketCount(), 0)
   }
 }
 
@@ -90,6 +89,7 @@ test('restoring a complete unique roster resumes the ending or its completed sta
     assert.equal(pending.endingFishing, 'inactive')
     assert.equal(pending.shiroPosition, null)
     assert.equal(pending.shiroHooked, false)
+    assert.equal(basketCount(pending), 0)
 
     const complete = createFishingGame(showIntro, [...allIds, 'riku'], true)
     assert.equal(complete.phase, 'ended')
@@ -99,10 +99,13 @@ test('restoring a complete unique roster resumes the ending or its completed sta
     assert.equal(complete.ryoExiting, true)
     assert.equal(complete.shiroSleeping, false)
     assert.equal(complete.introCompleted, true)
+    assert.equal(basketCount(complete), 1, 'a restored completed ending keeps Shiro in the basket count')
   }
   const missing = createFishingGame(false, [...without('tora'), 'riku', 'riku', 'not-an-idol'], true)
   assert.equal(missing.metIds.length, 15)
   assert.equal(missing.phase, 'aiming', 'duplicates, unknown ids and a stale completion flag cannot fake 16/16')
+  assert.equal(basketCount(missing), 0)
+  assert.equal(basketCount(createFishingGame(true, [], true)), 0)
   assert.equal(createFishingGame(true, [], true).phase, 'intro')
 })
 
@@ -170,6 +173,7 @@ test('every visible ending line waits for confirmation, then actual fishing and 
     assert.equal(game.phase, 'ending')
     assert.equal(game.speech, expected)
     assert.equal(canGreetShiro(game), false)
+    assert.equal(basketCount(game), 0, 'the basket stays empty before Shiro is caught')
     assert.equal(castLine(game), false)
     assert.equal(restartFishingGame(game), false)
     assert.equal(game.shiroAway, false, 'wake-shiro never reuses the punch animation flag')
@@ -206,6 +210,7 @@ test('every visible ending line waits for confirmation, then actual fishing and 
     assert.equal(game.phase, 'ending')
     assert.equal(game.speech, expected)
     assert.equal(game.endingFishing, 'caught')
+    assert.equal(basketCount(game), 1, 'Shiro stays counted throughout the caught dialogue and departure')
     assert.equal(castLine(game), false)
     assert.equal(restartFishingGame(game), false)
     if (expected.text) {
@@ -220,7 +225,7 @@ test('every visible ending line waits for confirmation, then actual fishing and 
   assert.equal(game.shiroSleeping, false)
   assert.equal(game.shiroExiting, true)
   assert.equal(game.ryoExiting, true)
-  assert.equal(basketCount(), 0)
+  assert.equal(basketCount(game), 1)
 })
 
 test('the final fishing instruction remains manual and a confirmed instruction opens fishing without skipping its tap guard', () => {
@@ -260,6 +265,7 @@ test('an empty ending cast returns to aiming, then only the moving Shiro target 
   assert.equal(game.script, null)
   assert.equal(game.caughtId, null)
   assert.deepEqual(game.metIds, originalRoster)
+  assert.equal(basketCount(game), 0, 'an empty cast does not fill the basket')
 
   const target = getShiroPose(game)
   game.angle = Math.atan2(target.x - HOOK_ORIGIN.x, target.y - HOOK_ORIGIN.y)
@@ -275,7 +281,7 @@ test('an empty ending cast returns to aiming, then only the moving Shiro target 
     assert.equal(game.phase, 'ending')
     assert.equal(game.caughtId, null, 'Shiro never becomes a seventeenth idol or an ordinary caughtId')
     assert.deepEqual(game.metIds, originalRoster)
-    assert.equal(basketCount(), 0)
+    if (game.endingFishing !== 'caught') assert.equal(basketCount(game), 0, 'hooking Shiro is not enough until reeling completes')
     assert.notEqual(game.script?.kind, 'encounter')
     if (game.endingFishing === 'reeling' && game.shiroHooked) {
       observedHookedReel = true
@@ -286,6 +292,7 @@ test('an empty ending cast returns to aiming, then only the moving Shiro target 
   assert.equal(observedHookedReel, true, 'a real swept collision precedes the caught script')
   assert.equal(game.endingFishing, 'caught')
   assert.equal(game.speech, ENDING_CATCH_LINES[0])
+  assert.equal(basketCount(game), 1, 'the basket changes as soon as Shiro reaches the top of the line')
   assert.equal(game.metIds.length, 16)
   assert.equal(game.casts, 2)
 })
@@ -380,6 +387,7 @@ test('restart only works after completion and resets the same game object with a
   assert.equal(restartFishingGame(game), false)
   finishEnding(game)
   const identity = game
+  assert.equal(basketCount(game), 1)
   const revision = game.revision
   const oldFishes = game.fishes
   assert.equal(restartFishingGame(game), true)
@@ -387,6 +395,7 @@ test('restart only works after completion and resets the same game object with a
   assert.equal(game.revision, revision + 1)
   assert.equal(game.phase, 'aiming')
   assert.equal(game.introCompleted, true)
+  assert.equal(basketCount(game), 0, 'replay empties the basket')
   assert.deepEqual(game.metIds, [])
   assert.equal(game.casts, 0)
   assert.equal(game.time, 0)

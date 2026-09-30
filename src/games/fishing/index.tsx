@@ -401,7 +401,7 @@ function Fishing({ onExit }: GameScreenProps) {
             <ellipse cy="0" rx="16" ry="4" fill="#69513d" stroke="#d3a676" strokeWidth="2" />
             <rect x="-13" y="5" width="26" height="21" rx="2" fill="#f1e6c8" />
             <text textAnchor="middle" y="14" fontSize="8" fill="#604f35">鱼篮</text>
-            <text textAnchor="middle" y="24" fontSize="12" fontWeight="800" fill="#604f35" data-testid="basket-count">{basketCount()}</text>
+            <text textAnchor="middle" y="24" fontSize="12" fontWeight="800" fill="#604f35" data-testid="basket-count">{basketCount(game)}</text>
           </g>
 
           <line ref={guide} className="fishing-aim" x1={HOOK_ORIGIN.x} y1={HOOK_ORIGIN.y} x2="195" y2="243" stroke="#fff4c7" strokeDasharray="2 6" opacity={canCast ? 0.55 : 0} />
@@ -514,7 +514,7 @@ function Fishing({ onExit }: GameScreenProps) {
       {ended ? <div className="fishing-end-overlay" role="dialog" aria-modal="true" aria-label="游戏结束">
         <button ref={replayButton} type="button" className="fishing-replay" onClick={replay} disabled={backgrounded}>再来一次</button>
       </div> : null}
-      <span className="fishing-sr-only">{ended ? '游戏结束，选择再来一次将从零开始。' : '点海面下钩，轻点对白继续。空格或回车同样可操作。鱼篮数量始终为零。'}</span>
+      <span className="fishing-sr-only">{ended ? '游戏结束，选择再来一次将从零开始。' : '点海面下钩，轻点对白继续。空格或回车同样可操作。'}鱼篮数量为 {basketCount(game)}。</span>
     </main>
   )
 }

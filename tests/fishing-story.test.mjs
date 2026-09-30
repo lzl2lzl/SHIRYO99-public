@@ -34,7 +34,7 @@ function recordSpeech(game, trace) {
 function runUntil(game, condition, description, trace = [], maxFrames = 4000) {
   recordSpeech(game, trace)
   for (let frame = 0; frame < maxFrames; frame += 1) {
-    assert.equal(basketCount(), 0, 'the decorative basket never collects an idol')
+    assert.equal(basketCount(game), 0, 'the basket never collects an idol')
     if (condition()) return trace
     tickFishingGame(game, FRAME_SECONDS)
     recordSpeech(game, trace)
@@ -49,7 +49,7 @@ function runUntil(game, condition, description, trace = [], maxFrames = 4000) {
 function runWithoutTapping(game, seconds) {
   for (let frame = 0; frame < Math.ceil(seconds / FRAME_SECONDS); frame += 1) {
     tickFishingGame(game, FRAME_SECONDS)
-    assert.equal(basketCount(), 0)
+    assert.equal(basketCount(game), 0)
   }
 }
 
@@ -103,7 +103,7 @@ test('sixteen unique encounters leave the basket empty, deduplicate repeats, and
     }
     assert.equal(game.shiroAway, false)
     assert.equal(game.metIds.filter((id) => id === idol.id).length, 1)
-    assert.equal(basketCount(), 0)
+    assert.equal(basketCount(game), 0)
   }
 
   assert.equal(game.phase, 'ending')
@@ -305,7 +305,7 @@ test('invalid time steps are harmless and an oversized frame cannot fast-forward
     assert.ok(game.time > before.time && game.time - before.time <= 0.05)
     assert.ok(Number.isFinite(game.hook.x) && Number.isFinite(game.hook.y))
     assert.ok(game.fishes.every((fish) => Number.isFinite(fish.x) && Number.isFinite(fish.y)))
-    assert.equal(basketCount(), 0)
+    assert.equal(basketCount(game), 0)
   }
 })
 
@@ -342,7 +342,7 @@ test('an empty cast completes only the two fixed lines and returns silently with
   assert.deepEqual(trace.filter((beat) => beat.text).map((beat) => beat.text), ['加油，了くん！', '闭嘴！'])
   assert.deepEqual(game.metIds, [])
   assert.equal(game.casts, 1)
-  assert.equal(basketCount(), 0)
+  assert.equal(basketCount(game), 0)
 })
 
 test('opening and encounter lines never advance on a timer, and a cast stays blocked until acknowledgement', () => {

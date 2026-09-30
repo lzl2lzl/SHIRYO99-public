@@ -447,5 +447,7 @@ export function tickFishingGame(game: FishingGame, dt: number, reducedMotion = f
   }
 }
 
-// A decorative jar, deliberately not a collection or inventory.
-export function basketCount(): 0 { return 0 }
+// Idols never enter the basket; Shiro counts only after reeling him all the way in.
+export function basketCount(game: Pick<FishingGame, 'phase' | 'endingFishing'>): 0 | 1 {
+  return game.endingFishing === 'caught' || game.phase === 'ended' ? 1 : 0
+}
