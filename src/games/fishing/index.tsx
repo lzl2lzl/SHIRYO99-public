@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import type { GameDefinition, GameScreenProps } from '../../engine/types'
 import { platform } from '../../platform'
 import { IDOLS, type DialogueBeat } from './content'
-import { advanceSpeech, basketCount, canAdvanceSpeech, canGreetRyo, canGreetShiro, castLine, createFishingGame, getDepartureOffset, getShiroPose, isWaitingForTap, restartFishingGame, speechDuration, tickFishingGame, type FishingGame } from './game'
-import { HOOK_ORIGIN, WORLD_HEIGHT, WORLD_WIDTH, hookPoint } from './model'
+import { advanceSpeech, basketCount, canAdvanceSpeech, canGreetRyo, canGreetShiro, castLine, createFishingGame, getDepartureOffset, getShiroPose, isWaitingForTap, restartFishingGame, speechDuration, tickFishingGame, turnWater, type FishingGame } from './game'
+import { HOOK_ORIGIN, WORLD_HEIGHT, WORLD_WIDTH, hookPoint, maxHookLength, type Point } from './model'
 import { dialoguePages, idolBubbleAnchor, shiroBubbleAnchor, shouldHighlightIdol, RYO_ENDING_REPLY, RYO_GREETING, SHIRO_DINNER, SHIRO_GREETING, skyResponse, type TimeOfDay } from './presentation'
 import { RyoPortrait } from './RyoPortrait'
+import { HeartReplay } from '../../app/HeartMotion'
+import { FISHING_WATER_COLORS, nameFontSize, nameWaveAmplitude } from './name-style'
 import './fishing.css'
 
 // THESIS: The sea is full of names, but the basket stays empty.
@@ -75,13 +77,14 @@ function Fishing({ onExit }: GameScreenProps) {
   const shiroMotion = useRef<SVGGElement>(null)
   const rodMotion = useRef<SVGPathElement>(null)
   const speechBubble = useRef<HTMLButtonElement>(null)
-  const replayButton = useRef<HTMLButtonElement>(null)
   const seaInput = useRef<HTMLButtonElement>(null)
   const latestRevision = useRef(-1)
   const isEnding = game.phase === 'ending'
   const ended = game.phase === 'ended'
   const sceneTime = ended ? 'night' : isEnding ? 'sunset' : timeOfDay
   const fontSize = Math.max(14, Math.min(15, stageWidth * 0.0385))
+  const nameSize = nameFontSize(stageWidth)
+  const halfNameWidth = Math.max(38, nameSize * 2.5 + 7)
   const measureText = useMemo(() => {
     const context = document.createElement('canvas').getContext('2d')
     if (context) context.font = `${fontSize}px "Microsoft YaHei", "PingFang SC", system-ui, sans-serif`
@@ -91,9 +94,9 @@ function Fishing({ onExit }: GameScreenProps) {
   const maxBubbleWidth = useCallback((speech: DialogueBeat) => {
     if (speech.speaker === 'shiro' && game.shiroPosition) return shiroBubbleAnchor(getShiroPose(game)).width / WORLD_WIDTH * stageWidth
     const fish = speech.speaker === 'idol' ? game.fishes.find((item) => item.id === game.caughtId) : undefined
-    if (fish) return idolBubbleAnchor(fish).width / WORLD_WIDTH * stageWidth
+    if (fish) return idolBubbleAnchor(fish, undefined, halfNameWidth).width / WORLD_WIDTH * stageWidth
     return stageWidth * (speech.location === 'water' ? 0.48 : 0.55)
-  }, [game, stageWidth])
+  }, [game, stageWidth, halfNameWidth])
 
   const paginateSpeech = useCallback((speech: DialogueBeat, text = speech.text) => dialoguePages(text, {
     maxWidth: maxBubbleWidth(speech) - 26,
@@ -145,15 +148,13 @@ function Fishing({ onExit }: GameScreenProps) {
     if (game.phase === 'ended') {
       setTimeOfDay('night')
       save(TIME_KEY, 'night')
-      replayButton.current?.focus()
     }
   }, [game.phase, dismissShiroGreeting, dismissRyoGreeting])
 
-  const act = useCallback(() => {
+  const act = useCallback((target?: Point) => {
     if (hiddenRef.current || performance.now() - lastTap.current < 350) return
     if (game.phase === 'aiming' || (game.phase === 'ending' && game.endingFishing === 'aiming')) {
-      castLine(game)
-      lastTap.current = performance.now()
+      if (castLine(game, target)) lastTap.current = performance.now()
     } else if (isWaitingForTap(game) && canAdvanceSpeech(game)) {
       const sameSpeech = reading.speech === game.speech && reading.script === game.script
       const offset = sameSpeech ? reading.offset : 0
@@ -165,6 +166,19 @@ function Fishing({ onExit }: GameScreenProps) {
     }
     sync()
   }, [game, paginateSpeech, reading, sync])
+
+  const touchSea = (event: MouseEvent<HTMLButtonElement>) => {
+    // Invert the actual SVG transform so CSS sizing and mobile scaling cannot skew aiming.
+    const matrix = scene.current?.getScreenCTM()
+    if (event.detail === 0 || !matrix) { act(); return }
+    const target = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
+    act({ x: target.x, y: target.y })
+  }
+
+  const stirSea = () => {
+    if (hiddenRef.current) return
+    if (turnWater(game)) sync()
+  }
 
   const touchSky = () => {
     if (hiddenRef.current || game.phase === 'ended') return
@@ -236,6 +250,15 @@ function Fishing({ onExit }: GameScreenProps) {
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.repeat) return
+      if (event.target === seaInput.current && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault()
+        if (!hiddenRef.current && !game.waterTurnover && (game.phase === 'aiming' || (game.phase === 'ending' && game.endingFishing === 'aiming'))) {
+          const next = game.angle + (event.key === 'ArrowRight' ? 0.12 : -0.12)
+          const angle = Math.atan2(Math.sin(next), Math.cos(next))
+          if (maxHookLength(angle) > 0) game.angle = angle
+        }
+        return
+      }
       if ((event.key === ' ' || event.key === 'Enter') && !(event.target instanceof HTMLButtonElement)) {
         event.preventDefault()
         act()
@@ -264,12 +287,12 @@ function Fishing({ onExit }: GameScreenProps) {
       for (const fish of game.fishes) {
         const element = fishElements.current.get(fish.id)
         const attached = fish.id === game.caughtId && !game.hasLeft
-        const tilt = reducedRef.current || attached ? 0 : Math.sin(game.time * 0.8 + fish.phase) * (fish.style === 'hostile' ? 4 : 2)
+        const tilt = reducedRef.current || attached ? 0 : Math.sin(game.time * 0.8 + fish.phase) * (fish.style === 'hostile' ? 1.5 : 1)
         element?.setAttribute('transform', `translate(${fish.x.toFixed(2)} ${fish.y.toFixed(2)}) rotate(${tilt.toFixed(2)})`)
         element?.setAttribute('data-x', fish.x.toFixed(2))
         element?.setAttribute('data-y', fish.y.toFixed(2))
         const glyphs = glyphElements.current.get(fish.id) ?? []
-        const amplitude = reducedRef.current || attached ? 0 : fish.style === 'warm' ? 2.3 : fish.style === 'quiet' ? 0.6 : 1.6
+        const amplitude = nameWaveAmplitude(fish.style, reducedRef.current || attached)
         const frequency = fish.style === 'hostile' ? 3.3 : fish.style === 'hesitant' ? 1.2 : 2
         glyphs.forEach((glyph, index) => glyph?.setAttribute('y', String(4 + Math.sin(game.time * frequency + fish.phase + index * 0.9) * amplitude)))
       }
@@ -278,7 +301,7 @@ function Fishing({ onExit }: GameScreenProps) {
       const movingShiro = game.speech?.speaker === 'shiro' && game.shiroPosition ? getShiroPose(game) : null
       const bubble = speechBubble.current
       if ((speakingFish || movingShiro) && bubble && bubble.dataset.speaker === game.speech?.speaker) {
-        const anchor = movingShiro ? shiroBubbleAnchor(movingShiro, Number(bubble.dataset.bubbleWidth)) : idolBubbleAnchor(speakingFish!, Number(bubble.dataset.bubbleWidth))
+        const anchor = movingShiro ? shiroBubbleAnchor(movingShiro, Number(bubble.dataset.bubbleWidth)) : idolBubbleAnchor(speakingFish!, Number(bubble.dataset.bubbleWidth), halfNameWidth)
         bubble.style.left = `${anchor.left / WORLD_WIDTH * 100}%`
         bubble.style.top = `${anchor.top / WORLD_HEIGHT * 100}%`
         bubble.style.width = `${anchor.width / WORLD_WIDTH * 100}%`
@@ -310,7 +333,7 @@ function Fishing({ onExit }: GameScreenProps) {
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('keydown', onKey)
     }
-  }, [act, game, sync, dismissShiroGreeting, dismissRyoGreeting])
+  }, [act, game, sync, dismissShiroGreeting, dismissRyoGreeting, halfNameWidth])
 
   const speech = game.speech
   const speaker = getSpeechName(game)
@@ -324,16 +347,17 @@ function Fishing({ onExit }: GameScreenProps) {
   const mood = skySpeech?.mood ?? game.mood ?? 'neutral'
   const night = sceneTime === 'night'
   const sunset = sceneTime === 'sunset'
+  const waterColors = FISHING_WATER_COLORS[sceneTime]
   const wakingShiro = speech?.event === 'wake-shiro'
   const tailAction = speech?.event === 'pull-shiro' ? 'pull' : speech?.event === 'dunk-shiro' ? 'dunk' : undefined
   const leavingTogether = speech?.event === 'leave-together' || ended
   const shiroAtShore = !game.shiroPosition && !game.shiroExiting && !game.shiroAway
-  const canCast = game.phase === 'aiming' || (isEnding && game.endingFishing === 'aiming')
+  const canCast = !game.waterTurnover && (game.phase === 'aiming' || (isEnding && game.endingFishing === 'aiming'))
   const speakingFish = speech?.speaker === 'idol' ? game.fishes.find((fish) => fish.id === game.caughtId) : undefined
   const speakingShiro = speech?.speaker === 'shiro' && game.shiroPosition ? getShiroPose(game) : null
   const bubbleWidth = speech ? Math.min(maxBubbleWidth(speech), Math.max(80, measureText(pages[0]) + 26, measureText(speaker ?? '') + 24)) : 80
   const widthInWorld = bubbleWidth / stageWidth * WORLD_WIDTH
-  const idolAnchor = speakingShiro ? shiroBubbleAnchor(speakingShiro, widthInWorld) : speakingFish ? idolBubbleAnchor(speakingFish, widthInWorld) : undefined
+  const idolAnchor = speakingShiro ? shiroBubbleAnchor(speakingShiro, widthInWorld) : speakingFish ? idolBubbleAnchor(speakingFish, widthInWorld, halfNameWidth) : undefined
   const speechClass = idolAnchor ? 'from-idol' : speech?.location === 'offscreen' ? 'from-offscreen' : speech?.location === 'water' ? 'from-water' : 'from-shore'
   const speechStyle = idolAnchor ? {
     left: `${idolAnchor.left / WORLD_WIDTH * 100}%`,
@@ -344,7 +368,7 @@ function Fishing({ onExit }: GameScreenProps) {
   const actionLabel = isWaitingForTap(game) ? speech?.text ? '继续对白' : '放回水中' : canCast ? isEnding ? '向宇都木士郎下钩' : '下钩' : '等待收线'
 
   return (
-    <main className={`fishing-screen${backgrounded ? ' is-background' : ''}${reducedMotion ? ' reduced-motion' : ''}`} data-phase={game.phase} data-time-of-day={sceneTime} data-ending-fishing={game.endingFishing}>
+    <main className={`fishing-screen${backgrounded ? ' is-background' : ''}${reducedMotion ? ' reduced-motion' : ''}`} data-phase={game.phase} data-time-of-day={sceneTime} data-ending-fishing={game.endingFishing} data-turning-water={Boolean(game.waterTurnover)}>
       <header className="fishing-header" inert={ended}>
         <button type="button" onClick={onExit} aria-label="返回游戏大厅">← 返回</button>
       </header>
@@ -352,23 +376,17 @@ function Fishing({ onExit }: GameScreenProps) {
       <div className="fishing-stage" inert={ended} style={{ '--fishing-dialogue-font': `${fontSize}px` } as CSSProperties}>
         <svg ref={scene} className="fishing-world" viewBox="0 0 390 600" aria-hidden="true" data-casts={game.casts}>
           <defs>
-            <filter id="fishing-unmet-glow" x="-80%" y="-150%" width="260%" height="400%" colorInterpolationFilters="sRGB">
-              <feGaussianBlur in="SourceAlpha" stdDeviation="1.8" result="soft-alpha" />
-              <feFlood floodColor="#f3f4e8" floodOpacity={night ? '.42' : '.5'} result="glow-color" />
-              <feComposite in="glow-color" in2="soft-alpha" operator="in" result="soft-glow" />
-              <feMerge><feMergeNode in="soft-glow" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
+            <pattern id="fishing-water-lines" width="95" height="70" patternUnits="userSpaceOnUse">
+              <path d="M8 32q12-5 25 0m36 29q6-3 13 0" stroke="#92d2d3" strokeWidth="1" fill="none" opacity=".14" />
+            </pattern>
             <linearGradient id="fishing-depth" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={night ? '#233a61' : sunset ? '#746879' : '#226875'} />
-              <stop offset="54%" stopColor={night ? '#192c4b' : sunset ? '#454d65' : '#174e5e'} />
-              <stop offset="100%" stopColor={night ? '#111d36' : sunset ? '#27384f' : '#0b3343'} />
+              <stop offset="0%" stopColor={waterColors[0]} />
+              <stop offset="54%" stopColor={waterColors[1]} />
+              <stop offset="100%" stopColor={waterColors[2]} />
             </linearGradient>
             <linearGradient id="fishing-sunset" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#dfb1ab" /><stop offset="100%" stopColor="#f6c98d" />
             </linearGradient>
-            <pattern id="fishing-water-lines" width="95" height="70" patternUnits="userSpaceOnUse">
-              <path d="M8 32q12-5 25 0m36 29q6-3 13 0" stroke="#92d2d3" strokeWidth="1" fill="none" opacity=".14" />
-            </pattern>
           </defs>
           <rect width="390" height="600" fill={night ? '#192039' : '#d8ece9'} />
           {sunset ? <rect width="390" height="206" fill="url(#fishing-sunset)" /> : null}
@@ -376,11 +394,16 @@ function Fishing({ onExit }: GameScreenProps) {
             <path d="M139 60h37m-24 6h39M34 118h51m-66 7h25" stroke="#eff8f2" strokeWidth="5" strokeLinecap="round" />}
           <path d="M0 174Q90 151 166 174T390 163V206H0Z" fill={night ? '#3d4f73' : sunset ? '#b09396' : '#95c6c8'} />
           <path className="fishing-surface" d="M0 184Q25 179 50 184T100 184T150 184T200 184T250 184T300 184T350 184T400 184V610H0Z" fill="url(#fishing-depth)" />
-          <rect y="206" width="390" height="394" fill="url(#fishing-water-lines)" />
-          <path d="M0 187Q25 181 50 187T100 187T150 187T200 187T250 187" fill="none" stroke="#d4eeeb" strokeWidth="2" opacity=".7" />
-          <g className="fishing-light" fill="#b7e5dc" opacity=".035">
-            <path d="M80 193l40 330h52L120 193zM175 193l15 290h30L204 193z" />
+          <rect y="206" width="390" height="394" fill="url(#fishing-water-lines)" pointerEvents="none" />
+          <g className="fishing-light" fill="#b7e5dc" opacity=".035" pointerEvents="none">
+            <path d="M80 193l40 330h52L120 193z" />
+            <path d="M175 193l15 290h30L204 193z" />
           </g>
+          <path d="M0 187Q25 181 50 187T100 187T150 187T200 187T250 187" fill="none" stroke="#d4eeeb" strokeWidth="2" opacity=".7" />
+          {game.waterTurnover ? <g className="fishing-turnover-wake" fill="none" stroke="#cce8e4" strokeWidth="1.5">
+            <path d="M-20 206q65-16 130 0t130 0 130 0 130 0" />
+            <path d="M-20 218q65-16 130 0t130 0 130 0 130 0" opacity=".5" />
+          </g> : null}
 
           <g className="fishing-pier">
             <path d="M279 168h111v44l-18-9-23 8-27-7-43-3z" fill="#9b9377" />
@@ -421,10 +444,10 @@ function Fishing({ onExit }: GameScreenProps) {
                   className={`fishing-name${caught ? ' is-caught' : ''}`} data-idol={idol.id} data-affinity={idol.affinity} data-hinted={hinted}
                   style={{ color: idol.color }}
                   transform={`translate(${initial.x} ${initial.y})`}>
-                  <rect x="-38" y="-16" width="76" height="32" rx="15" className="fishing-name-halo" />
-                  <path className="fishing-name-wake" d="M-23 13q9-3 17 0t17 0" fill="none" stroke="currentColor" strokeWidth=".75" opacity=".4" />
-                  <text textAnchor="middle" fontSize="14" fontWeight="600" fill="currentColor" filter={hinted ? 'url(#fishing-unmet-glow)' : undefined}>
-                    {Array.from(idol.name).map((char, charIndex, chars) => <tspan key={charIndex} x={(charIndex - (chars.length - 1) / 2) * 14} y="4" ref={(element) => {
+                  <path className="fishing-name-wake" d="M-15 12q7.5-2 15 0t15 0" fill="none" />
+                  {hinted ? <path className="fishing-unmet-wake" d="M-8 16q4-1.5 8 0t8 0" fill="none" /> : null}
+                  <text textAnchor="middle" fontSize={nameSize} fontWeight="700" fill="currentColor">
+                    {Array.from(idol.name).map((char, charIndex, chars) => <tspan key={charIndex} x={(charIndex - (chars.length - 1) / 2) * nameSize * 0.98} y="4" ref={(element) => {
                       if (!element) return
                       const glyphs = glyphElements.current.get(idol.id) ?? []
                       glyphs[charIndex] = element
@@ -449,7 +472,7 @@ function Fishing({ onExit }: GameScreenProps) {
           </g>
         </svg>
 
-        <button ref={seaInput} type="button" className="fishing-sea-input" onClick={act} disabled={backgrounded || ended} aria-label={actionLabel} data-testid="fishing-action" />
+        <button ref={seaInput} type="button" className="fishing-sea-input" onClick={touchSea} disabled={backgrounded || ended || Boolean(game.waterTurnover)} aria-label={actionLabel} data-testid="fishing-action" />
         <button type="button" className="fishing-sky-body" onClick={touchSky} disabled={backgrounded || ended || (sunset && !shiroAtShore)} aria-label={sunset ? '触碰灰色兔子太阳' : night ? '触碰紫色狐狸月亮' : '触碰 ZERO 太阳'}>
           <svg viewBox="0 0 64 64" aria-hidden="true">
             <circle cx="32" cy="32" r="29" fill={night ? '#f5ecc8' : '#f8e7ae'} />
@@ -477,18 +500,24 @@ function Fishing({ onExit }: GameScreenProps) {
           </svg>
           {game.metIds.length}<span>/16</span>
         </button>
+        {!isEnding && !ended ? <button type="button" className="fishing-turn-water" onClick={stirSea}
+          disabled={backgrounded || game.phase !== 'aiming' || Boolean(game.script || game.waterTurnover)} aria-label="毁灭偶像，让深处的名字浮上来" aria-busy={Boolean(game.waterTurnover)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9q4-5 9 0t9 0M3 16q4-5 9 0t9 0M18 4l3 5-5 2" />
+          </svg>毁灭偶像
+        </button> : null}
         <button type="button" className="fishing-time-toggle" onClick={switchTime} disabled={backgrounded || isEnding || ended} aria-label={sunset ? '当前为夕阳' : night ? '切换到白天' : '切换到夜晚'}>{sunset ? '夕阳' : night ? '☀ 白天' : '☾ 夜晚'}</button>
         <button type="button" className="fishing-shiro-input" onClick={touchShiro} disabled={backgrounded || ryoGreeting || (isEnding ? !shiroAtShore : !canGreetShiro(game, Boolean(skySpeech) || shiroGreeting))} aria-label="和宇都木士郎打招呼" />
         <button type="button" className="fishing-ryo-input" onClick={touchRyo} disabled={backgrounded || !canGreetRyo(game, Boolean(skySpeech) || shiroGreeting)} aria-label="和月云了打招呼" />
 
         <div className="fishing-announcement" aria-live="polite" aria-atomic="true">
           {speech?.text ? floatingText ? (
-            <button type="button" onClick={act} disabled={backgrounded} key={`${game.script?.kind}-${game.script?.index}`} className="fishing-intro" aria-description="继续">
+            <button type="button" onClick={() => act()} disabled={backgrounded} key={`${game.script?.kind}-${game.script?.index}`} className="fishing-intro" aria-description="继续">
               <p>{speech.text}</p>
               <span className="fishing-next" aria-hidden="true"><span className="fishing-continue-mark" /></span>
             </button>
           ) : (
-            <button ref={speechBubble} type="button" onClick={act} disabled={backgrounded || !manualSpeech} className={`fishing-speech ${speechClass}`} style={speechStyle}
+            <button ref={speechBubble} type="button" onClick={() => act()} disabled={backgrounded || !manualSpeech} className={`fishing-speech ${speechClass}`} style={speechStyle}
               data-speaker={speech.speaker ?? 'narration'} data-page={pageIndex} data-anchor-id={speakingShiro ? 'shiro' : speakingFish?.id} data-tail-side={idolAnchor?.side} data-playback={manualSpeech ? 'dialogue' : 'line'} data-bubble-width={widthInWorld}
               aria-description={manualSpeech ? '继续对白' : undefined}>
               {speaker ? <span className="fishing-speaker">{speaker}</span> : null}
@@ -496,7 +525,7 @@ function Fishing({ onExit }: GameScreenProps) {
               {manualSpeech ? <span className="fishing-next" aria-hidden="true"><span className="fishing-continue-mark" /></span> : null}
             </button>
           ) : null}
-          {!speech?.text && isWaitingForTap(game) ? <button type="button" className="fishing-silent-confirm" onClick={act} disabled={backgrounded} aria-label="确认放回水中"><span className="fishing-continue-mark" aria-hidden="true" /></button> : null}
+          {!speech?.text && isWaitingForTap(game) ? <button type="button" className="fishing-silent-confirm" onClick={() => act()} disabled={backgrounded} aria-label="确认放回水中"><span className="fishing-continue-mark" aria-hidden="true" /></button> : null}
         </div>
         {skySpeech ? <div className="fishing-speech fishing-sky-response" role="status" aria-live="polite" aria-atomic="true" data-speaker="ryo" data-playback="line" data-companion-speaker={speech?.speaker}>
           <span className="fishing-speaker">月云了</span>
@@ -511,10 +540,8 @@ function Fishing({ onExit }: GameScreenProps) {
           <p>{isEnding ? RYO_ENDING_REPLY.text : RYO_GREETING.text}</p>
         </div> : null}
       </div>
-      {ended ? <div className="fishing-end-overlay" role="dialog" aria-modal="true" aria-label="游戏结束">
-        <button ref={replayButton} type="button" className="fishing-replay" onClick={replay} disabled={backgrounded}>再来一次</button>
-      </div> : null}
-      <span className="fishing-sr-only">{ended ? '游戏结束，选择再来一次将从零开始。' : '点海面下钩，轻点对白继续。空格或回车同样可操作。'}鱼篮数量为 {basketCount(game)}。</span>
+      {ended ? <HeartReplay onReplay={replay} disabled={backgrounded} /> : null}
+      <span className="fishing-sr-only">{ended ? '游戏结束，选择再来一次将从零开始。' : '点击场景空白处，朝任意方向出钩；空钩碰到场景边缘后返回。「毁灭偶像」可让深处的名字浮上来。轻点对白继续。聚焦场景后用左右方向键瞄准，空格或回车出钩。'}鱼篮数量为 {basketCount(game)}。</span>
     </main>
   )
 }

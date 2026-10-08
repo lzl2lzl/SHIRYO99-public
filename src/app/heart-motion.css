@@ -1,0 +1,32 @@
+body:has(.game-viewport) { padding: 0; }
+.game-viewport { min-height: 100dvh; background: radial-gradient(circle at 80% 0%, #27271f 0, transparent 30rem), #11110f; }
+.game-viewport.is-entering { position: fixed; inset: 0; z-index: 40; overflow: auto; clip-path: url(#game-heart-reveal); }
+.lobby-transition-base { background: #f4f2f7; }
+.lobby-transition-base.is-entering { pointer-events: none; }
+.lobby-transition-base.is-entering .lobby-love-button > svg { animation: none; fill: #7336cb; }
+.heart-clip-defs { position: fixed; width: 0; height: 0; pointer-events: none; }
+.heart-flight-layer { position: fixed; inset: 0; z-index: 41; pointer-events: none; }
+.heart-entry-spark, .heart-entry-traveller { position: absolute; width: 30px; height: 30px; color: #7336cb; }
+.heart-entry-spark { color: #b493de; }
+.heart-flight-layer svg { display: block; width: 100%; height: 100%; }
+.fishing-end-overlay.heart-replay-overlay { background: #151329e8; }
+.heart-replay-panel { display: flex; flex-direction: column; align-items: center; width: min(300px, 90vw); color: #b99adf; outline: none; }
+.heart-replay-emblem { position: relative; width: 240px; height: 184px; }
+.heart-replay-core { position: absolute; left: 78px; top: 50px; width: 84px; height: 84px; color: #a888d1; }
+.heart-replay-core svg { width: 100%; height: 100%; }
+.heart-replay-core > span { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 4px; color: #241731; font: 900 25px/1 Arial, sans-serif; }
+.heart-replay-orbit { position: absolute; left: 108px; top: 80px; width: 24px; height: 24px; color: #b493de; }
+.heart-replay-orbit-1 { color: #d2cdd8; }
+.heart-replay-orbit svg { width: 100%; height: 100%; }
+.heart-replay-wordmark { margin: 4px 0 21px; color: #b493de; font: 900 32px/1.1 Arial, sans-serif; letter-spacing: -1px; }
+.heart-replay-wordmark > span:first-child { color: #c0b8cc; }
+.heart-replay-wordmark sup { position: relative; top: -.55em; margin-left: 3px; font-size: 16px; vertical-align: baseline; letter-spacing: -.4px; }
+.heart-replay-progress { display: flex; gap: 9px; height: 20px; color: #b99adf; }
+.heart-replay-progress span, .heart-replay-progress svg { display: block; width: 15px; height: 15px; }
+.heart-replay-action { height: 88px; padding-top: 26px; }
+.fishing-screen .fishing-replay.heart-replay-button { display: flex; align-items: center; justify-content: center; gap: 16px; min-width: 206px; min-height: 54px; padding: 12px 24px; background: #f4f2f7; color: #6330a9; border: 0; border-radius: 30px; font-size: 18px; font-weight: 600; box-shadow: none; }
+.fishing-screen .fishing-replay.heart-replay-button:hover { background: #e9def5; }
+.fishing-screen .fishing-replay.heart-replay-button:active { background: #dbc9ef; }
+.fishing-screen .heart-replay-button:focus-visible { outline: 2px solid #cbb2e8; outline-offset: 5px; }
+.heart-replay-button svg { width: 20px; height: 20px; }
+@media (min-width: 760px) { .game-viewport { padding: 28px 0; } }

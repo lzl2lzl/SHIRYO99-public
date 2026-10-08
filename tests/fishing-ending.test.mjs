@@ -5,7 +5,7 @@ import {
   advanceSpeech, basketCount, canAdvanceSpeech, canGreetShiro, castLine,
   createFishingGame, getDepartureOffset, getShiroPose, isWaitingForTap, restartFishingGame, startIntroduction, tickFishingGame,
 } from '../src/games/fishing/game.ts'
-import { FISH_BOUNDS, HOOK_ORIGIN, hookPoint, idleAngle } from '../src/games/fishing/model.ts'
+import { FISH_BOUNDS, HOOK_ORIGIN, REST_ANGLE, hookPoint } from '../src/games/fishing/model.ts'
 
 const allIds = IDOLS.map(idol => idol.id)
 const without = id => allIds.filter(candidate => candidate !== id)
@@ -38,9 +38,7 @@ function catchShiro(game) {
   for (let attempt = 0; attempt < 8 && game.endingFishing !== 'caught'; attempt++) {
     until(game, () => game.time >= game.inputLockedUntil, { confirm: false })
     const target = getShiroPose(game)
-    game.angle = Math.atan2(target.x - HOOK_ORIGIN.x, target.y - HOOK_ORIGIN.y)
-    game.hook = hookPoint(game.angle, game.length)
-    assert.equal(castLine(game), true)
+    assert.equal(castLine(game, target), true)
     assert.equal(game.script, null, 'the ending cast does not replay the ordinary fixed lines')
     until(game, () => game.endingFishing === 'caught' || game.endingFishing === 'aiming', { confirm: false })
   }
@@ -417,9 +415,9 @@ test('restart only works after completion and resets the same game object with a
   assert.equal(game.shiroSwimTime, 0)
   assert.equal(getDepartureOffset(game), 0)
   assert.deepEqual(getShiroPose(game), { x: 357, y: 120, rotation: 0 })
-  assert.equal(game.angle, idleAngle(0))
+  assert.equal(game.angle, REST_ANGLE)
   assert.equal(game.length, 26)
-  assert.deepEqual(game.hook, hookPoint(idleAngle(0), 26))
+  assert.deepEqual(game.hook, hookPoint(REST_ANGLE, 26))
   assert.notEqual(game.fishes, oldFishes)
   assert.equal(game.fishes.length, 16)
   assert.ok(game.fishes.every(fish => fish.x >= FISH_BOUNDS.left && fish.x <= FISH_BOUNDS.right && fish.y >= FISH_BOUNDS.top && fish.y <= FISH_BOUNDS.bottom))

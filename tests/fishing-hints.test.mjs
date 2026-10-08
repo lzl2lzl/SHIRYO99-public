@@ -72,7 +72,7 @@ test('a hooked name remains highlighted until its normal shore encounter records
   assert.equal(shouldHighlightIdol('iori', game.metIds, true), false)
   assert.equal(highlighted(game).length, 15)
   until(game, () => game.phase === 'aiming' && game.time >= game.inputLockedUntil)
-  assert.equal(shouldHighlightIdol('iori', game.metIds, true), false, 'returning underwater does not restore the glow')
+  assert.equal(shouldHighlightIdol('iori', game.metIds, true), false, 'returning underwater does not restore the bubble')
 
   reelToShore(game, 'iori')
   until(game, () => game.phase === 'encounter', { confirm: false })
@@ -82,7 +82,7 @@ test('a hooked name remains highlighted until its normal shore encounter records
   assert.deepEqual(highlighted(game, true), allIds.filter(id => id !== 'iori'))
 })
 
-test('the final normal encounter removes the last glow before the ending, and complete restored games have none', () => {
+test('the final normal encounter removes the last bubble before the ending, and complete restored games have none', () => {
   const game = createFishingGame(false, allIds.filter(id => id !== 'iori'))
   assert.deepEqual(highlighted(game), ['iori'])
   reelToShore(game, 'iori')
@@ -136,7 +136,7 @@ test('querying or switching hints leaves game state, swimming, and the shared co
   assert.deepEqual(game, control, 'presentation-only hint queries do not change movement, timing, progress, or dialogue')
 })
 
-test('the SVG hint is conditional on encounter progress and composites behind the unchanged member-colored text', () => {
+test('the SVG hint is a small extra wake, never a floating bubble, text glow or recoloring', () => {
   const source = readFileSync(new URL('../src/games/fishing/index.tsx', import.meta.url), 'utf8')
   assert.match(source, /shouldHighlightIdol\(idol\.id,\s*game\.metIds,\s*hintsEnabled\)/)
   assert.match(source, /style=\{\{\s*color:\s*idol\.color\s*\}\}/)
@@ -144,10 +144,11 @@ test('the SVG hint is conditional on encounter progress and composites behind th
     .map(match => match[0]).find(text => text.includes('Array.from(idol.name)'))
   assert.ok(nameText, 'the names remain text, not replacement images')
   assert.match(nameText, /fill="currentColor"/)
-  assert.match(nameText, /filter=\{hinted\s*\?\s*'url\(#fishing-unmet-glow\)'\s*:\s*undefined\}/)
+  assert.doesNotMatch(nameText, /\bfilter\s*=/)
   assert.doesNotMatch(nameText, /\bstroke(?:Width|-width)?\s*=/)
-  const glow = source.match(/<filter\b[^>]*id="fishing-unmet-glow"[\s\S]*?<\/filter>/)?.[0]
-  assert.ok(glow)
-  assert.match(glow, /<feGaussianBlur\b/)
-  assert.match(glow, /<feMergeNode\s+in="SourceGraphic"\s*\/>\s*<\/feMerge>/, 'the original colored letters are drawn on top of the glow')
+  assert.doesNotMatch(source, /fishing-unmet-glow|feGaussianBlur/)
+  assert.doesNotMatch(source, /fishing-unmet-bubble/)
+  assert.match(source, /hinted\s*\?\s*<path className="fishing-unmet-wake"/)
+  const wake = source.match(/<path className="fishing-unmet-wake"[\s\S]*?\/>/)?.[0]
+  assert.match(wake, /fill="none"/)
 })

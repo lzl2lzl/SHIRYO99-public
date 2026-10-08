@@ -7,7 +7,7 @@ export type FishState = Point & {
   heading: number
   style: string
   /** Optional so a plain fish object remains valid in collision and story tests. */
-  wander?: { randomState: number; target: Point; nextDepth?: number; roamNext?: boolean }
+  wander?: { randomState: number; target: Point; nextDepth?: number; roamNext?: boolean; coasting?: boolean }
 }
 
 export const WORLD_WIDTH = 390
@@ -134,7 +134,8 @@ export function stepFish(
       const reachedDepth = fish.wander.target.y < 330
         ? fish.y <= fish.wander.target.y + 10
         : fish.wander.target.y > 480 && fish.y >= fish.wander.target.y - 10
-      if (reachedDepth || Math.hypot(fish.wander.target.x - fish.x, fish.wander.target.y - fish.y) < 13) {
+      if ((!fish.wander.coasting && reachedDepth) || Math.hypot(fish.wander.target.x - fish.x, fish.wander.target.y - fish.y) < 13) {
+        fish.wander.coasting = false
         const neighbours = fishes.filter((other) => other.id !== fish.id && other.id !== excludeId)
         if (fish.wander.roamNext) {
           fish.wander.target = nextDestination(fish.wander, undefined, neighbours)
@@ -220,9 +221,67 @@ export function stepFish(
   }
 }
 
-/** A 3.6-second pendulum, radians relative to downward vertical; positive is right. */
-export function idleAngle(time: number): number {
-  return ((-23.5 + Math.sin((time * TAU) / 3.6) * 40.5) * Math.PI) / 180
+/** Zero points straight down. Idle motion never chooses the player's casting ray. */
+export const REST_ANGLE = 0
+
+export function restingAngle(time: number, reducedMotion = false): number {
+  return reducedMotion ? REST_ANGLE : REST_ANGLE + Math.sin(time * 1.8) * 0.065
+}
+
+export function angleToward(point: Point): number | null {
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)
+    || point.x < 0 || point.x > WORLD_WIDTH || point.y < 0 || point.y > WORLD_HEIGHT
+    || Math.hypot(point.x - HOOK_ORIGIN.x, point.y - HOOK_ORIGIN.y) < 0.001) return null
+  const angle = Math.atan2(point.x - HOOK_ORIGIN.x, point.y - HOOK_ORIGIN.y)
+  return maxHookLength(angle) > 0 ? angle : null
+}
+
+export const TURNOVER_SECONDS = 1.8
+export type WaterTurnover = { elapsed: number; routes: { id: string; from: Point; to: Point; delay: number }[] }
+
+/** The deeper half rises into two open upper rows; the shallow half makes room.
+ * This is a brief shared current, independent of affinity or encounter history.
+ * Normal free swimming resumes immediately afterward, without permanent lanes.
+ */
+export function createWaterTurnover(fishes: FishState[]): WaterTurnover {
+  const byDepth = [...fishes].sort((a, b) => b.y - a.y || a.id.localeCompare(b.id))
+  const half = Math.ceil(byDepth.length / 2)
+  // Preserve left/right neighbourhoods; otherwise all sixteen cross the centre at once.
+  const ordered = [byDepth.slice(0, half), byDepth.slice(half)]
+    .flatMap(group => group.sort((a, b) => a.x - b.x || a.y - b.y))
+  return { elapsed: 0, routes: ordered.map((fish, index) => {
+    const rising = index < half
+    const slot = rising ? index : index - half
+    return {
+      id: fish.id, from: { x: fish.x, y: fish.y },
+      to: { x: 60 + Math.floor(slot / 2) * 90 + Math.sin(fish.phase) * 5, y: (rising ? 268 : 466) + (slot % 2) * 54 + Math.cos(fish.phase) * 3 },
+      delay: (1 + Math.sin(fish.phase)) * 0.16,
+    }
+  }) }
+}
+
+export function stepWaterTurnover(fishes: FishState[], current: WaterTurnover, dt: number): boolean {
+  if (!Number.isFinite(dt) || dt <= 0) return false
+  current.elapsed = Math.min(TURNOVER_SECONDS, current.elapsed + Math.min(dt, 0.05))
+  const progress = current.elapsed / TURNOVER_SECONDS
+  for (const route of current.routes) {
+    const fish = fishes.find(item => item.id === route.id)
+    if (!fish) continue
+    const local = clamp((progress - route.delay) / (1 - route.delay), 0, 1)
+    const eased = local * local * (3 - 2 * local)
+    const passing = Math.sin(local * Math.PI) * (route.to.y < route.from.y ? -16 : 16)
+    fish.x = clamp(route.from.x + (route.to.x - route.from.x) * eased + passing, FISH_BOUNDS.left, FISH_BOUNDS.right)
+    fish.y = route.from.y + (route.to.y - route.from.y) * eased
+    if (progress >= 1 && fish.wander) {
+      // Float across this new layer first, instead of immediately diving again.
+      fish.wander.target = { x: fish.x < 195 ? 300 : 90, y: fish.y }
+      fish.wander.nextDepth = fish.y < 405 ? 1 : -1
+      fish.wander.roamNext = false
+      fish.wander.coasting = true
+      fish.heading = fish.x < 195 ? 0 : Math.PI
+    }
+  }
+  return progress >= 1
 }
 
 export function hookPoint(angle: number, length: number): Point {
@@ -233,19 +292,18 @@ export function hookPoint(angle: number, length: number): Point {
   }
 }
 
-/** Stop at the first side/bottom boundary; reject rays passing through the upper shore. */
+/** All directions are valid; stop at the first of the four scene edges. */
 export function maxHookLength(angle: number): number {
   if (!Number.isFinite(angle)) return 0
   const dx = Math.sin(angle)
   const dy = Math.cos(angle)
-  if (dy <= 0.000001) return 0
-  const surfaceLength = (SEA_LEVEL - HOOK_ORIGIN.y) / dy
-  const surfaceX = HOOK_ORIGIN.x + dx * surfaceLength
-  if (surfaceX < 18 || surfaceX >= 280) return 0
   const sideLength = Math.abs(dx) < 0.000001
     ? Infinity
-    : ((dx > 0 ? 372 : 18) - HOOK_ORIGIN.x) / dx
-  return Math.max(0, Math.min((585 - HOOK_ORIGIN.y) / dy, sideLength))
+    : ((dx > 0 ? WORLD_WIDTH : 0) - HOOK_ORIGIN.x) / dx
+  const verticalLength = Math.abs(dy) < 0.000001
+    ? Infinity
+    : ((dy > 0 ? WORLD_HEIGHT : 0) - HOOK_ORIGIN.y) / dy
+  return Math.max(0, Math.min(verticalLength, sideLength))
 }
 
 function entryFraction(from: Point, to: Point, left: number, top: number, right: number, bottom: number): number | null {

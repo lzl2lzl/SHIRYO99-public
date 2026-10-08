@@ -23,7 +23,9 @@
 .fishing-world { width: 100%; height: 100%; display: block; }
 .fishing-screen[data-phase="ending"] .fishing-stage { overflow: visible; }
 .fishing-screen[data-phase="ending"] .fishing-world { overflow: hidden; }
-.fishing-sea-input { position: absolute; inset: 30.7% 0 0; width: 100%; background: transparent; cursor: crosshair !important; padding: 0; }
+.fishing-sea-input { position: absolute; inset: 0; width: 100%; background: transparent; cursor: crosshair !important; padding: 0; }
+.fishing-aim { opacity: 0; }
+.fishing-stage:has(.fishing-sea-input:focus-visible) .fishing-aim[opacity="0.55"] { opacity: .55; }
 .fishing-sky-body { position: absolute; top: 3.4%; left: 4.6%; width: 14%; min-width: 44px; aspect-ratio: 1; padding: 0; background: transparent; border-radius: 50%; }
 .fishing-sky-body svg { display: block; width: 100%; height: 100%; }
 .fishing-sky-body:hover { transform: translateY(-1px); }
@@ -43,8 +45,18 @@
 .fishing-time-toggle { position: absolute; right: 8px; bottom: 2px; min-width: 66px; padding: 0 10px; border-radius: 8px; background: transparent; color: #e0f0ec !important; font-size: 13px; }
 .fishing-time-toggle:hover { background: #b7e5dc20; }
 .fishing-time-toggle:active { background: #b7e5dc30; }
-.fishing-name-halo { fill: transparent; stroke: transparent; }
-.fishing-name.is-caught .fishing-name-halo { fill: #123f50; stroke: #f8dc8a; stroke-width: 1.5px; }
+.fishing-turn-water { position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; padding: 0 10px; border-radius: 8px; background: transparent; color: #e0f0ec !important; font-size: 13px; }
+.fishing-turn-water svg { width: 22px; height: 22px; }
+.fishing-turn-water:not(:disabled):hover { background: #b7e5dc20; }
+.fishing-turn-water:not(:disabled):active { background: #b7e5dc30; }
+.fishing-turn-water:disabled { opacity: .4; }
+.fishing-turn-water[aria-busy="true"] { opacity: .8; }
+.fishing-turnover-wake { pointer-events: none; animation: fishing-turnover 1.8s ease-out both; }
+@keyframes fishing-turnover { from { opacity: .65; transform: translateY(0); } to { opacity: 0; transform: translateY(150px); } }
+.fishing-name-wake, .fishing-unmet-wake { stroke: #d4e9e3; stroke-width: 1px; stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.fishing-name-wake { opacity: .2; }
+.fishing-name[data-hinted="true"] .fishing-name-wake, .fishing-unmet-wake { opacity: .6; }
+.fishing-name.is-caught .fishing-name-wake { stroke: #f8dc8a; opacity: 1; }
 .fishing-names { transition: opacity 250ms ease; }
 .fishing-names.during-intro { opacity: .28; }
 .fishing-shiro { transform-origin: 357px 150px; transition: transform 700ms cubic-bezier(.12,.75,.26,1), opacity 350ms ease; }

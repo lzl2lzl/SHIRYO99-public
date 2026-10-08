@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   FISH_BOUNDS, FISH_SPEED, HOOK_ORIGIN, createFish, firstCollision,
-  hookPoint, idleAngle, maxHookLength, stepFish,
+  angleToward, hookPoint, maxHookLength, stepFish,
 } from '../src/games/fishing/model.ts'
 
 const roster = Array.from({ length: 16 }, (_, index) => ({ id: `fish-${index}`, swimStyle: `style-${index % 4}` }))
@@ -131,7 +131,7 @@ test('affinity styles cannot select routes or reserve the easiest upper layer', 
 })
 
 test('real-speed casts have first-hit opportunities for all sixteen, including every initial bottom fish', (context) => {
-  // Each trial is an independent opportunity at the actual pendulum angle. The
+  // Each trial is an independent opportunity aimed at a name's current position. The
   // names keep swimming throughout the hook descent; no fish are removed and
   // no catch is forced by moving a target to the hook or skipping a blocker.
   for (const sessionSeed of [1, 42, 20260929, 4294967295]) {
@@ -144,7 +144,8 @@ test('real-speed casts have first-hit opportunities for all sixteen, including e
       if (frame) stepFish(fishes, 0.1, time)
       if (frame % 6 !== 0) continue
       const trial = structuredClone(fishes)
-      const angle = idleAngle(time)
+      const angle = angleToward(fishes[(frame / 6) % fishes.length])
+      assert.notEqual(angle, null)
       const limit = maxHookLength(angle)
       let length = 26
       let previous = hookPoint(angle, length)
@@ -195,18 +196,21 @@ test('collision is restricted to the part of the fish box below the sea surface'
   })
 })
 
-test('pendulum stays in range and hooks terminate at the first world boundary', () => {
-  close(idleAngle(0.9), 17 * Math.PI / 180)
-  close(idleAngle(2.7), -64 * Math.PI / 180)
+test('point-aimed hooks terminate at the first world boundary', () => {
   for (let index = 0; index <= 360; index += 1) {
-    const angle = idleAngle(index / 100)
-    assert.ok(angle >= -64 * Math.PI / 180 - 1e-10 && angle <= 17 * Math.PI / 180 + 1e-10)
+    const radians = index * Math.PI / 180
+    const target = { x: HOOK_ORIGIN.x + Math.sin(radians) * 100, y: HOOK_ORIGIN.y + Math.cos(radians) * 100 }
+    const angle = angleToward(target)
+    assert.notEqual(angle, null)
+    close(angle, Math.atan2(target.x - HOOK_ORIGIN.x, target.y - HOOK_ORIGIN.y))
     const point = hookPoint(angle, maxHookLength(angle))
-    assert.ok(point.x >= 18 - 1e-8 && point.x <= 372 + 1e-8 && point.y <= 585 + 1e-8)
-    assert.ok(Math.abs(point.x - 18) < 1e-8 || Math.abs(point.x - 372) < 1e-8 || Math.abs(point.y - 585) < 1e-8)
+    assert.ok(point.x >= -1e-8 && point.x <= 390 + 1e-8 && point.y >= -1e-8 && point.y <= 600 + 1e-8)
+    assert.ok(Math.abs(point.x) < 1e-8 || Math.abs(point.x - 390) < 1e-8 || Math.abs(point.y) < 1e-8 || Math.abs(point.y - 600) < 1e-8)
   }
-  assert.equal(maxHookLength(Math.PI), 0)
-  assert.equal(maxHookLength(Math.PI / 3), 0, 'a ray passing through the right shore must be rejected')
+  assert.equal(maxHookLength(Math.PI), 147)
+  assert.ok(maxHookLength(Math.PI / 3) > 0, 'shore directions are not blocked')
+  assert.equal(maxHookLength(NaN), 0)
+  assert.equal(maxHookLength(Infinity), 0)
 })
 
 test('reeling retains the casting ray and returns exactly to the rod origin', () => {

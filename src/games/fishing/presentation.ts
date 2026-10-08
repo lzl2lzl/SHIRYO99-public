@@ -9,15 +9,15 @@ export function shouldHighlightIdol(id: string, metIds: readonly string[], enabl
 }
 
 /** Keep the bubble beside the speaking name, outside its highlighted catch box. */
-export function idolBubbleAnchor(point: Point, preferredWidth = WORLD_WIDTH * 0.39) {
+export function idolBubbleAnchor(point: Point, preferredWidth = WORLD_WIDTH * 0.39, halfNameWidth: number = FISH_HITBOX.halfWidth) {
   const margin = 12
   const gap = 12
   const side = point.x >= WORLD_WIDTH / 2 ? 'right' : 'left'
-  const room = (side === 'right' ? point.x : WORLD_WIDTH - point.x) - FISH_HITBOX.halfWidth - gap - margin
+  const room = (side === 'right' ? point.x : WORLD_WIDTH - point.x) - halfNameWidth - gap - margin
   const width = Math.min(preferredWidth, room)
   const left = side === 'right'
-    ? point.x - FISH_HITBOX.halfWidth - gap - width
-    : point.x + FISH_HITBOX.halfWidth + gap
+    ? point.x - halfNameWidth - gap - width
+    : point.x + halfNameWidth + gap
   const top = Math.max(86, Math.min(WORLD_HEIGHT - 86, point.y))
   return { left, top, width, side, tailOffset: point.y - top }
 }

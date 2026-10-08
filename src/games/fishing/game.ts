@@ -1,5 +1,5 @@
 import { CAST_LINES, ENCOUNTERS, ENDING_CATCH_LINES, ENDING_LINES, IDOLS, INTRO_LINES, needsConfirmation, type DialogueBeat } from './content.ts'
-import { FISH_BOUNDS, HOOK_ORIGIN, createFish, firstCollision, hookPoint, idleAngle, maxHookLength, stepFish, type FishState, type Point } from './model.ts'
+import { FISH_BOUNDS, HOOK_ORIGIN, REST_ANGLE, angleToward, createFish, createWaterTurnover, firstCollision, hookPoint, maxHookLength, restingAngle, stepFish, stepWaterTurnover, type FishState, type Point, type WaterTurnover } from './model.ts'
 
 export type FishingPhase = 'intro' | 'aiming' | 'casting' | 'reeling' | 'landing' | 'encounter' | 'releasing' | 'ending' | 'ended'
 export type EndingFishing = 'inactive' | 'aiming' | 'casting' | 'reeling' | 'caught'
@@ -33,6 +33,7 @@ export interface FishingGame {
   revision: number
   introCompleted: boolean
   inputLockedUntil: number
+  waterTurnover: WaterTurnover | null
 }
 
 const REST_LENGTH = 26
@@ -93,13 +94,14 @@ export function getShiroPose(game: FishingGame): Point & { rotation: number } {
 
 export function createFishingGame(showIntro: boolean, metIds: string[] = [], endingCompleted = false): FishingGame {
   const game: FishingGame = {
-    phase: showIntro ? 'intro' : 'aiming', time: 0, fishes: createFish(IDOLS), angle: idleAngle(0),
-    length: REST_LENGTH, hook: hookPoint(idleAngle(0), REST_LENGTH), caughtId: null, casts: 0,
+    phase: showIntro ? 'intro' : 'aiming', time: 0, fishes: createFish(IDOLS), angle: REST_ANGLE,
+    length: REST_LENGTH, hook: hookPoint(REST_ANGLE, REST_LENGTH), caughtId: null, casts: 0,
     metIds: [...new Set(metIds.filter((id) => IDOLS.some((idol) => idol.id === id)))],
     speech: null, script: null, castSpeechDone: true, shiroAway: false, mood: null,
     shiroExiting: false, ryoExiting: false, shiroSleeping: false,
     endingFishing: 'inactive', shiroPosition: null, shiroHooked: false, shiroSwimTime: 0,
     hasLeft: false, release: null, revision: 0, introCompleted: !showIntro, inputLockedUntil: 0,
+    waterTurnover: null,
   }
   if (hasMetEveryone(game)) {
     game.introCompleted = true
@@ -188,6 +190,7 @@ function releaseIdol(game: FishingGame) {
 
 function backToAiming(game: FishingGame) {
   game.phase = 'aiming'
+  game.angle = REST_ANGLE
   game.caughtId = null
   game.hasLeft = false
   game.mood = null
@@ -221,7 +224,7 @@ function finishScript(game: FishingGame, kind: ScriptKind) {
     } else {
       game.endingFishing = 'aiming'
       game.length = REST_LENGTH
-      game.angle = idleAngle(game.time)
+      game.angle = REST_ANGLE
       game.hook = hookPoint(game.angle, REST_LENGTH)
     }
   }
@@ -284,9 +287,25 @@ export function startIntroduction(game: FishingGame) {
   startScript(game, 'intro', INTRO_LINES.map((text) => ({ text })))
 }
 
-export function castLine(game: FishingGame) {
+export function canTurnWater(game: FishingGame): boolean {
+  return game.phase === 'aiming' && !game.script && !game.waterTurnover && game.time >= game.inputLockedUntil
+}
+
+export function turnWater(game: FishingGame): boolean {
+  if (!canTurnWater(game)) return false
+  game.waterTurnover = createWaterTurnover(game.fishes)
+  game.revision++
+  return true
+}
+
+/** A supplied point selects the exact ray; keyboard users can keep their aimed ray. */
+export function castLine(game: FishingGame, target?: Point) {
+  if (game.waterTurnover) return false
+  const angle = target ? angleToward(target) : game.angle
+  if (angle === null || maxHookLength(angle) === 0) return false
   if (game.phase === 'ending') {
     if (game.endingFishing !== 'aiming' || game.script || game.time < game.inputLockedUntil) return false
+    game.angle = angle
     game.endingFishing = 'casting'
     game.length = REST_LENGTH
     game.hook = hookPoint(game.angle, REST_LENGTH)
@@ -296,6 +315,8 @@ export function castLine(game: FishingGame) {
     return true
   }
   if (game.phase !== 'aiming' || game.time < game.inputLockedUntil) return false
+  game.angle = angle
+  game.hook = hookPoint(angle, REST_LENGTH)
   game.phase = 'casting'
   game.length = REST_LENGTH
   game.casts++
@@ -345,11 +366,7 @@ function tickEndingFishing(game: FishingGame, delta: number) {
       y: SHIRO_WATER.y + (1 - Math.cos(game.shiroSwimTime * 0.3)) * 35,
     }
   }
-  if (game.endingFishing === 'aiming') {
-    game.angle = idleAngle(game.time)
-    game.length = REST_LENGTH
-    game.hook = hookPoint(game.angle, REST_LENGTH)
-  } else if (game.endingFishing === 'casting') {
+  if (game.endingFishing === 'casting') {
     const nextLength = Math.min(maxHookLength(game.angle), game.length + CAST_SPEED * delta)
     const next = hookPoint(game.angle, nextLength)
     const pose = getShiroPose(game)
@@ -378,7 +395,10 @@ function tickEndingFishing(game: FishingGame, delta: number) {
       if (game.shiroHooked) {
         game.endingFishing = 'caught'
         startScript(game, 'ending', ENDING_CATCH_LINES)
-      } else game.endingFishing = 'aiming'
+      } else {
+        game.endingFishing = 'aiming'
+        game.angle = REST_ANGLE
+      }
       game.revision++
     }
   }
@@ -388,7 +408,12 @@ export function tickFishingGame(game: FishingGame, dt: number, reducedMotion = f
   if (game.phase === 'ended' || !Number.isFinite(dt) || dt <= 0) return
   const delta = Math.min(dt, 0.05)
   game.time += delta
-  stepFish(game.fishes, delta, game.time, game.caughtId && (!game.hasLeft || game.release) ? game.caughtId : undefined, reducedMotion)
+  if (game.waterTurnover) {
+    if (stepWaterTurnover(game.fishes, game.waterTurnover, delta)) {
+      game.waterTurnover = null
+      game.revision++
+    }
+  } else stepFish(game.fishes, delta, game.time, game.caughtId && (!game.hasLeft || game.release) ? game.caughtId : undefined, reducedMotion)
 
   if (game.release && game.caughtId) {
     const fish = game.fishes.find((item) => item.id === game.caughtId)!
@@ -408,16 +433,24 @@ export function tickFishingGame(game: FishingGame, dt: number, reducedMotion = f
     if (!isWaitingForTap(game) && game.script.elapsed * 1000 >= speechDuration(game.speech, game.script.kind)) advanceSpeech(game, false)
   }
 
+  // A short line hangs under gravity, independent of the keyboard's aimed ray.
+  // Settle smoothly after reeling from any direction; hidden tabs never tick.
+  const hanging = game.phase !== 'casting' && game.phase !== 'reeling'
+    && (game.phase !== 'ending' || game.endingFishing === 'inactive' || game.endingFishing === 'aiming')
+  if (hanging) {
+    const current = Math.atan2(game.hook.x - HOOK_ORIGIN.x, game.hook.y - HOOK_ORIGIN.y)
+    const target = restingAngle(game.time, reducedMotion)
+    const difference = Math.atan2(Math.sin(target - current), Math.cos(target - current))
+    game.length = REST_LENGTH
+    game.hook = hookPoint(reducedMotion ? REST_ANGLE : current + difference * (1 - Math.exp(-8 * delta)), REST_LENGTH)
+  }
+
   if (game.phase === 'ending') {
     tickEndingFishing(game, delta)
     return
   }
 
-  if (game.phase === 'aiming' || game.phase === 'intro') {
-    game.angle = idleAngle(game.time)
-    game.length = REST_LENGTH
-    game.hook = hookPoint(game.angle, game.length)
-  } else if (game.phase === 'casting') {
+  if (game.phase === 'casting') {
     const nextLength = Math.min(maxHookLength(game.angle), game.length + CAST_SPEED * delta)
     const next = hookPoint(game.angle, nextLength)
     const hit = firstCollision(game.hook, next, game.fishes)
