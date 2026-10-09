@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { HEART_PATH, ENTRY_DURATION, REPLAY_DURATION, clampUnit, easeOut, heartCoverScale, heartFlight, type HeartPoint } from './heart-motion'
+import { HEART_PATH, ENTRY_DURATION, REPLAY_DURATION, clampUnit, easeOut, heartCoverScale, heartFlight, replayFrame, type HeartPoint } from './heart-motion'
 import './heart-motion.css'
 
 export function Heart() {
@@ -55,41 +55,40 @@ export function HeartTransition({ entry, onComplete }: { entry: HeartEntry; onCo
   </>
 }
 
-export function HeartReplay({ onReplay, disabled }: { onReplay: () => void; disabled: boolean }) {
+export function HeartReplay({ onReplay, onExit, disabled }: { onReplay: () => void; onExit: () => void; disabled: boolean }) {
   const progress = useHeartSequence(REPLAY_DURATION)
-  const ready = progress >= .87
+  const frame = replayFrame(progress)
+  const ready = frame.ready
   const panel = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
   useEffect(() => { panel.current?.focus({ preventScroll: true }) }, [])
   useEffect(() => { if (ready) button.current?.focus({ preventScroll: true }) }, [ready])
-  const gather = easeOut(progress / .42)
-  const rotation = easeOut((progress - .22) / .61) * Math.PI * 2
-  const pop = clampUnit((progress - .87) / .13)
+  const pop = frame.actions
   const buttonScale = 1 - Math.cos(pop * Math.PI * 2) * (1 - pop) * .16
   return <div className="fishing-end-overlay heart-replay-overlay" role="dialog" aria-modal="true" aria-label="游戏结束">
-    <div ref={panel} className="heart-replay-panel" tabIndex={-1} data-ready={ready}>
-      <div className="heart-replay-emblem" aria-hidden="true">
-        <span className="heart-replay-core" style={{ opacity: gather, transform: `scale(${.65 + gather * .35})` }}><Heart /><span>99</span></span>
+    <div ref={panel} className="heart-replay-panel" tabIndex={-1} data-ready={ready} data-sequence={frame.phase}
+      onKeyDown={event => {
+        if (event.key !== 'Tab') return
+        const actions = panel.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
+        if (!actions?.length) { event.preventDefault(); return }
+        if (event.shiftKey && document.activeElement === actions[0]) { event.preventDefault(); actions[actions.length - 1].focus() }
+        else if (!event.shiftKey && document.activeElement === actions[actions.length - 1]) { event.preventDefault(); actions[0].focus() }
+      }}>
+      <div className="heart-replay-emblem" aria-hidden="true" style={{ filter: `drop-shadow(0 0 ${frame.glow * 5}px rgb(209 169 255 / ${frame.glow * .85})) drop-shadow(0 0 ${frame.glow * 17}px rgb(159 87 245 / ${frame.glow * .6}))` }}>
+        <span className="heart-replay-core" style={{ opacity: frame.core, transform: `scale(${.65 + frame.core * .35}) rotate(${frame.rotation}rad)` }}><Heart /><span>99</span></span>
         {Array.from({ length: 8 }, (_, index) => {
-          const angle = index * Math.PI / 4 + rotation
-          const radius = 112 - gather * 53
-          return <span key={index} className={`heart-replay-orbit heart-replay-orbit-${index % 2}`} style={{ opacity: .2 + gather * .8,
-            transform: `translate(${Math.cos(angle) * radius}px,${Math.sin(angle) * radius * .8}px) rotate(${Math.sin(angle) * 22}deg) scale(${.6 + gather * .4})` }}><Heart /></span>
+          const angle = -Math.PI / 2 + index * Math.PI / 4 + frame.rotation
+          return <span key={index} className={`heart-replay-orbit heart-replay-orbit-${index % 2}`} data-lit={frame.lights[index] === 1} style={{ opacity: .12 + frame.lights[index] * .88,
+            transform: `translate(${Math.cos(angle) * 82}px,${Math.sin(angle) * 82}px) rotate(${Math.sin(angle) * 22}deg)` }}><Heart /></span>
         })}
       </div>
-      <div className="heart-replay-wordmark" aria-label="SHIRYO99"><span>SHI</span><span>RYO</span><sup>99</sup></div>
-      <div className="heart-replay-progress" aria-hidden="true">
-        {Array.from({ length: 7 }, (_, index) => {
-          const lit = progress >= (index + 1) * .1
-          const pulse = ready ? 1 : .6 + .4 * Math.sin(progress * Math.PI * 7 - index * .5) ** 2
-          return <span key={index} style={{ opacity: lit ? pulse : .16 }}><Heart /></span>
-        })}
+      <div className="heart-replay-action" style={{ opacity: easeOut(pop), transform: `scale(${buttonScale})` }}>
+        {ready ? <>
+          <button ref={button} type="button" className="fishing-replay heart-replay-button" onClick={onReplay} disabled={disabled}>再来一次？</button>
+          <button type="button" className="heart-replay-button heart-exit-button" onClick={onExit} disabled={disabled}>我不玩了！</button>
+        </> : null}
       </div>
-      <div className="heart-replay-action">
-        {ready ? <button ref={button} type="button" className="fishing-replay heart-replay-button" onClick={onReplay} disabled={disabled}
-          style={{ opacity: easeOut(pop), transform: `scale(${buttonScale})` }}>再来一次 <Heart /></button> : null}
-      </div>
-      <span className="fishing-sr-only" role="status">{ready ? '可以再来一次了。' : '游戏结束。'}</span>
+      <span className="fishing-sr-only" role="status">{ready ? '可以再来一次，或返回游戏大厅。' : '游戏结束。'}</span>
     </div>
   </div>
 }

@@ -1,4 +1,4 @@
-import { CAST_LINES, ENCOUNTERS, ENDING_CATCH_LINES, ENDING_LINES, IDOLS, INTRO_LINES, needsConfirmation, type DialogueBeat } from './content.ts'
+import { CAST_LINES, ENCOUNTERS, ENDING_CATCH_LINES, ENDING_LINES, IDOLS, INTRO_BEATS, needsConfirmation, type DialogueBeat } from './content.ts'
 import { FISH_BOUNDS, HOOK_ORIGIN, REST_ANGLE, angleToward, createFish, createWaterTurnover, firstCollision, hookPoint, maxHookLength, restingAngle, stepFish, stepWaterTurnover, type FishState, type Point, type WaterTurnover } from './model.ts'
 
 export type FishingPhase = 'intro' | 'aiming' | 'casting' | 'reeling' | 'landing' | 'encounter' | 'releasing' | 'ending' | 'ended'
@@ -284,7 +284,7 @@ export function startIntroduction(game: FishingGame) {
   if (game.phase !== 'aiming' && game.phase !== 'intro') return
   game.phase = 'intro'
   game.mood = null
-  startScript(game, 'intro', INTRO_LINES.map((text) => ({ text })))
+  startScript(game, 'intro', INTRO_BEATS)
 }
 
 export function canTurnWater(game: FishingGame): boolean {

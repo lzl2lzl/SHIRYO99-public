@@ -24,11 +24,13 @@ test('letter ripples remain subpixel and stop for attached names or reduced moti
   }
 })
 
-test('names remain unbacked and the sea uses the original two quiet light shafts instead of bands', () => {
+test('names remain unbacked; irregular water veils and two light shafts replace repeated line decoration', () => {
   const source = readFileSync(new URL('../src/games/fishing/index.tsx', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /fishing-name-water|name-water-|backingElements|NAME_WATER_BACKINGS/)
   assert.doesNotMatch(source, /fishing-water-currents|fishing-current-color|waterMotion/)
   assert.match(source, /className="fishing-light" fill="#b7e5dc" opacity="\.035" pointerEvents="none"/)
   assert.match(source, /M80 193l40 330h52L120 193z/)
   assert.match(source, /M175 193l15 290h30L204 193z/)
+  assert.doesNotMatch(source, /fishing-water-lines|<pattern/)
+  assert.match(source, /className="fishing-water-veils" fill="url\(#fishing-soft-water\)" pointerEvents="none"/)
 })

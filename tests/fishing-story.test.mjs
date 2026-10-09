@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CAST_LINES, ENCOUNTERS, IDOLS, INTRO_LINES } from '../src/games/fishing/content.ts'
+import { CAST_LINES, ENCOUNTERS, IDOLS, INTRO_LINES, INTRO_BEATS } from '../src/games/fishing/content.ts'
 import {
   advanceSpeech,
   basketCount,
@@ -256,18 +256,17 @@ test('Minami smiling silence remains a manual line followed by Ryo question mark
   runUntil(game, () => game.phase === 'aiming', 'complete Minami smiling encounter')
 })
 
-test('the introduction contains the exact three opening lines and two instructions, completes, and can replay', () => {
+test('the introduction keeps three opening lines then three anchored guide steps, completes, and can replay', () => {
   assert.deepEqual(INTRO_LINES.slice(0, 3), [
     '月云了获得了一个可以捕捉偶像的鱼竿',
     '钓到的偶像会被捉进鱼篮里',
     '遇见……可怕的事……',
   ])
-  assert.equal(INTRO_LINES.length, 5)
-  assert.ok(INTRO_LINES.slice(3).every((text) => typeof text === 'string' && text.length > 0))
-  assert.ok(INTRO_LINES[3].includes('轻点场景空白处'))
-  assert.ok(INTRO_LINES[3].includes('任意方向'))
-  assert.ok(INTRO_LINES[4].includes('毁灭偶像'))
-  assert.ok(INTRO_LINES[4].includes('读完后点一下'))
+  assert.equal(INTRO_LINES.length, 6)
+  assert.deepEqual(INTRO_LINES.slice(3), ['作弊点这里。', '毁灭偶像！！！', '哈哈！'])
+  assert.deepEqual(INTRO_BEATS.map(beat => beat.guideTarget), [undefined, undefined, undefined, 'hints', 'turnover', 'time'])
+  assert.equal(INTRO_LINES.join('').includes('轻点场景空白处'), false)
+  assert.equal(INTRO_LINES.join('').includes('深处的名字'), false)
   assert.equal(INTRO_LINES.join('').includes('轻点继续'), false)
   assert.equal(INTRO_LINES.join('').includes('「下钩」'), false)
 
@@ -292,6 +291,23 @@ test('the introduction contains the exact three opening lines and two instructio
   startIntroduction(game)
   assert.equal(game.phase, 'casting', 'replaying the introduction cannot interrupt a cast')
   assert.equal(game.script, castScript)
+})
+
+test('every visual guide step waits for a separate confirmation and only the last completes first-run storage', () => {
+  const game = createFishingGame(true)
+  for (const beat of INTRO_BEATS) {
+    assert.equal(game.speech, beat)
+    assert.equal(game.introCompleted, false)
+    runWithoutTapping(game, 15)
+    assert.equal(game.speech, beat, 'guide must not auto-advance')
+    assert.equal(advanceSpeech(game, false), false)
+    assert.equal(castLine(game), false)
+    assert.equal(advanceSpeech(game, true), true)
+  }
+  assert.equal(game.phase, 'aiming')
+  assert.equal(game.introCompleted, true)
+  assert.equal(game.casts, 0)
+  assert.equal(createFishingGame(false).phase, 'aiming')
 })
 
 test('invalid time steps are harmless and an oversized frame cannot fast-forward the game', () => {

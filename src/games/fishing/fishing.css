@@ -69,6 +69,14 @@
 .fishing-intro { position: absolute; left: 9%; width: 82%; top: 41%; padding: 0; text-align: center; background: transparent; color: #fcf6dc !important; pointer-events: auto; }
 .fishing-intro p { margin: 0; font-size: clamp(18px, 5.4cqi, 24px); line-height: 1.8; font-weight: 600; text-wrap: balance; text-shadow: 0 2px 6px #163e47; }
 .fishing-intro > .fishing-next { justify-content: center; margin-top: 20px; color: #cce1da; }
+.fishing-screen .fishing-intro-guide { position: absolute; inset: 0; z-index: 5; width: 100%; height: 100%; padding: 0; background: transparent; color: #f3f4e8; }
+.fishing-intro-guide > svg { display: block; width: 100%; height: 100%; pointer-events: none; }
+.fishing-guide-copy { position: absolute; transform: translateX(-50%); white-space: nowrap; font-size: 20px; font-weight: 700; line-height: 1.5; animation: fishing-guide-reveal 300ms cubic-bezier(.16,1,.3,1) both; }
+.fishing-guide-circle { stroke-dasharray: 1; animation: fishing-guide-circle 460ms cubic-bezier(.16,1,.3,1) both; }
+.fishing-guide-pointer { animation: fishing-guide-reveal 300ms 120ms both; }
+.fishing-stage[data-guide] .fishing-count, .fishing-stage[data-guide] .fishing-turn-water { opacity: 1; }
+@keyframes fishing-guide-circle { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes fishing-guide-reveal { from { opacity: .2; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
 .fishing-speech { position: absolute; padding: 8px 12px; border-radius: 12px; background: var(--fishing-paper); color: #203e42 !important; box-shadow: 0 4px 10px #08273528; text-align: left; pointer-events: auto; }
 .fishing-speech::before { content: ""; position: absolute; right: -9px; bottom: 14px; width: 12px; height: 14px; background: var(--fishing-paper); clip-path: polygon(0 0, 100% 100%, 0 75%); }
 .fishing-speech.from-shore { top: 14%; right: 36%; }

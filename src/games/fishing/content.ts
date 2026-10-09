@@ -32,6 +32,7 @@ export const IDOLS: readonly Idol[] = [
 export interface DialogueBeat {
   speaker?: 'ryo' | 'shiro' | 'idol' | 'crowd'
   text: string
+  guideTarget?: 'hints' | 'turnover' | 'time'
   /** 台词 expire automatically; 对话 wait for confirmation within an encounter. */
   mode?: 'line' | 'dialogue'
   location?: 'shore' | 'water' | 'narration' | 'offscreen'
@@ -48,13 +49,15 @@ export function needsConfirmation(beat: DialogueBeat, fallback: 'line' | 'dialog
   return (beat.mode ?? fallback) === 'dialogue' && (beat.waitForTap === true || beat.text.length > 0)
 }
 
-export const INTRO_LINES: readonly string[] = [
-  '月云了获得了一个可以捕捉偶像的鱼竿',
-  '钓到的偶像会被捉进鱼篮里',
-  '遇见……可怕的事……',
-  '轻点场景空白处，朝任意方向出钩；命中或碰到边缘后自动收线。',
-  '深处的名字可用「毁灭偶像」换上来；对话读完后点一下，再甩一竿。',
+export const INTRO_BEATS: readonly DialogueBeat[] = [
+  { text: '月云了获得了一个可以捕捉偶像的鱼竿' },
+  { text: '钓到的偶像会被捉进鱼篮里' },
+  { text: '遇见……可怕的事……' },
+  { text: '作弊点这里。', guideTarget: 'hints' },
+  { text: '毁灭偶像！！！', guideTarget: 'turnover' },
+  { text: '哈哈！', guideTarget: 'time' },
 ]
+export const INTRO_LINES: readonly string[] = INTRO_BEATS.map((beat) => beat.text)
 
 export const CAST_LINES: readonly DialogueBeat[] = [
   { speaker: 'shiro', text: '加油，了くん！', mode: 'line', location: 'shore', durationMs: 1800 },

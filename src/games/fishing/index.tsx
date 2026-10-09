@@ -6,6 +6,7 @@ import { advanceSpeech, basketCount, canAdvanceSpeech, canGreetRyo, canGreetShir
 import { HOOK_ORIGIN, WORLD_HEIGHT, WORLD_WIDTH, hookPoint, maxHookLength, type Point } from './model'
 import { dialoguePages, idolBubbleAnchor, shiroBubbleAnchor, shouldHighlightIdol, RYO_ENDING_REPLY, RYO_GREETING, SHIRO_DINNER, SHIRO_GREETING, skyResponse, type TimeOfDay } from './presentation'
 import { RyoPortrait } from './RyoPortrait'
+import { IntroGuide } from './IntroGuide'
 import { HeartReplay } from '../../app/HeartMotion'
 import { FISHING_WATER_COLORS, nameFontSize, nameWaveAmplitude } from './name-style'
 import './fishing.css'
@@ -81,6 +82,7 @@ function Fishing({ onExit }: GameScreenProps) {
   const latestRevision = useRef(-1)
   const isEnding = game.phase === 'ending'
   const ended = game.phase === 'ended'
+  const introGuide = game.phase === 'intro' ? game.speech?.guideTarget : undefined
   const sceneTime = ended ? 'night' : isEnding ? 'sunset' : timeOfDay
   const fontSize = Math.max(14, Math.min(15, stageWidth * 0.0385))
   const nameSize = nameFontSize(stageWidth)
@@ -373,12 +375,14 @@ function Fishing({ onExit }: GameScreenProps) {
         <button type="button" onClick={onExit} aria-label="返回游戏大厅">← 返回</button>
       </header>
 
-      <div className="fishing-stage" inert={ended} style={{ '--fishing-dialogue-font': `${fontSize}px` } as CSSProperties}>
+      <div className="fishing-stage" inert={ended} data-guide={introGuide} style={{ '--fishing-dialogue-font': `${fontSize}px` } as CSSProperties}>
         <svg ref={scene} className="fishing-world" viewBox="0 0 390 600" aria-hidden="true" data-casts={game.casts}>
           <defs>
-            <pattern id="fishing-water-lines" width="95" height="70" patternUnits="userSpaceOnUse">
-              <path d="M8 32q12-5 25 0m36 29q6-3 13 0" stroke="#92d2d3" strokeWidth="1" fill="none" opacity=".14" />
-            </pattern>
+            <linearGradient id="fishing-soft-water" x1="0" y1="0" x2=".25" y2="1">
+              <stop offset="0%" stopColor={night ? '#7889b2' : sunset ? '#cba9b2' : '#96c9ba'} stopOpacity="0" />
+              <stop offset="42%" stopColor={night ? '#7889b2' : sunset ? '#cba9b2' : '#96c9ba'} stopOpacity=".18" />
+              <stop offset="100%" stopColor={night ? '#45618a' : sunset ? '#756385' : '#34838a'} stopOpacity="0" />
+            </linearGradient>
             <linearGradient id="fishing-depth" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={waterColors[0]} />
               <stop offset="54%" stopColor={waterColors[1]} />
@@ -394,7 +398,10 @@ function Fishing({ onExit }: GameScreenProps) {
             <path d="M139 60h37m-24 6h39M34 118h51m-66 7h25" stroke="#eff8f2" strokeWidth="5" strokeLinecap="round" />}
           <path d="M0 174Q90 151 166 174T390 163V206H0Z" fill={night ? '#3d4f73' : sunset ? '#b09396' : '#95c6c8'} />
           <path className="fishing-surface" d="M0 184Q25 179 50 184T100 184T150 184T200 184T250 184T300 184T350 184T400 184V610H0Z" fill="url(#fishing-depth)" />
-          <rect y="206" width="390" height="394" fill="url(#fishing-water-lines)" pointerEvents="none" />
+          <g className="fishing-water-veils" fill="url(#fishing-soft-water)" pointerEvents="none">
+            <path d="M-50 221C40 198 89 261 183 252S335 216 432 251L432 380C320 365 240 396 144 345S20 336-50 360Z" />
+            <path d="M-42 438C54 482 99 415 207 397S354 443 433 398L433 568C339 598 291 523 179 546S36 566-42 535Z" opacity=".75" />
+          </g>
           <g className="fishing-light" fill="#b7e5dc" opacity=".035" pointerEvents="none">
             <path d="M80 193l40 330h52L120 193z" />
             <path d="M175 193l15 290h30L204 193z" />
@@ -472,8 +479,8 @@ function Fishing({ onExit }: GameScreenProps) {
           </g>
         </svg>
 
-        <button ref={seaInput} type="button" className="fishing-sea-input" onClick={touchSea} disabled={backgrounded || ended || Boolean(game.waterTurnover)} aria-label={actionLabel} data-testid="fishing-action" />
-        <button type="button" className="fishing-sky-body" onClick={touchSky} disabled={backgrounded || ended || (sunset && !shiroAtShore)} aria-label={sunset ? '触碰灰色兔子太阳' : night ? '触碰紫色狐狸月亮' : '触碰 ZERO 太阳'}>
+        <button ref={seaInput} type="button" className="fishing-sea-input" onClick={touchSea} disabled={backgrounded || ended || Boolean(introGuide) || Boolean(game.waterTurnover)} aria-label={actionLabel} data-testid="fishing-action" />
+        <button type="button" className="fishing-sky-body" onClick={touchSky} disabled={backgrounded || ended || Boolean(introGuide) || (sunset && !shiroAtShore)} aria-label={sunset ? '触碰灰色兔子太阳' : night ? '触碰紫色狐狸月亮' : '触碰 ZERO 太阳'}>
           <svg viewBox="0 0 64 64" aria-hidden="true">
             <circle cx="32" cy="32" r="29" fill={night ? '#f5ecc8' : '#f8e7ae'} />
             {sunset ? <g fill="#d1d1d1" stroke="#797979" strokeWidth="1.7">
@@ -493,7 +500,7 @@ function Fishing({ onExit }: GameScreenProps) {
           </svg>
         </button>
         <button type="button" className="fishing-count" onClick={toggleHints} aria-pressed={hintsEnabled}
-          disabled={backgrounded || isEnding || ended} aria-label={`未钓过提示，已遇见 ${game.metIds.length} 位，共 16 位`}
+          disabled={backgrounded || isEnding || ended || Boolean(introGuide)} aria-label={`未钓过提示，已遇见 ${game.metIds.length} 位，共 16 位`}
           title={hintsEnabled ? '隐藏未钓过提示' : '显示未钓过提示'}>
           <svg className="fishing-hint-mark" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M8 1.5 9.6 6.4 14.5 8 9.6 9.6 8 14.5 6.4 9.6 1.5 8 6.4 6.4Z" />
@@ -506,12 +513,12 @@ function Fishing({ onExit }: GameScreenProps) {
             <path d="M3 9q4-5 9 0t9 0M3 16q4-5 9 0t9 0M18 4l3 5-5 2" />
           </svg>毁灭偶像
         </button> : null}
-        <button type="button" className="fishing-time-toggle" onClick={switchTime} disabled={backgrounded || isEnding || ended} aria-label={sunset ? '当前为夕阳' : night ? '切换到白天' : '切换到夜晚'}>{sunset ? '夕阳' : night ? '☀ 白天' : '☾ 夜晚'}</button>
+        <button type="button" className="fishing-time-toggle" onClick={switchTime} disabled={backgrounded || isEnding || ended || Boolean(introGuide)} aria-label={sunset ? '当前为夕阳' : night ? '切换到白天' : '切换到夜晚'}>{sunset ? '夕阳' : night ? '☀ 白天' : '☾ 夜晚'}</button>
         <button type="button" className="fishing-shiro-input" onClick={touchShiro} disabled={backgrounded || ryoGreeting || (isEnding ? !shiroAtShore : !canGreetShiro(game, Boolean(skySpeech) || shiroGreeting))} aria-label="和宇都木士郎打招呼" />
         <button type="button" className="fishing-ryo-input" onClick={touchRyo} disabled={backgrounded || !canGreetRyo(game, Boolean(skySpeech) || shiroGreeting)} aria-label="和月云了打招呼" />
 
         <div className="fishing-announcement" aria-live="polite" aria-atomic="true">
-          {speech?.text ? floatingText ? (
+          {speech?.text && !introGuide ? floatingText ? (
             <button type="button" onClick={() => act()} disabled={backgrounded} key={`${game.script?.kind}-${game.script?.index}`} className="fishing-intro" aria-description="继续">
               <p>{speech.text}</p>
               <span className="fishing-next" aria-hidden="true"><span className="fishing-continue-mark" /></span>
@@ -539,9 +546,13 @@ function Fishing({ onExit }: GameScreenProps) {
           <span className="fishing-speaker">月云了</span>
           <p>{isEnding ? RYO_ENDING_REPLY.text : RYO_GREETING.text}</p>
         </div> : null}
+        {introGuide ? <IntroGuide target={introGuide} text={speech!.text} disabled={backgrounded} onNext={() => {
+          act()
+          if (game.phase !== 'intro') requestAnimationFrame(() => seaInput.current?.focus({ preventScroll: true }))
+        }} /> : null}
       </div>
-      {ended ? <HeartReplay onReplay={replay} disabled={backgrounded} /> : null}
-      <span className="fishing-sr-only">{ended ? '游戏结束，选择再来一次将从零开始。' : '点击场景空白处，朝任意方向出钩；空钩碰到场景边缘后返回。「毁灭偶像」可让深处的名字浮上来。轻点对白继续。聚焦场景后用左右方向键瞄准，空格或回车出钩。'}鱼篮数量为 {basketCount(game)}。</span>
+      {ended ? <HeartReplay onReplay={replay} onExit={onExit} disabled={backgrounded} /> : null}
+      <span className="fishing-sr-only">{ended ? '游戏结束，选择再来一次将从零开始，或选择我不玩了返回大厅。' : '点击场景空白处，朝任意方向出钩；空钩碰到场景边缘后返回。「毁灭偶像」可让深处的名字浮上来。轻点对白继续。聚焦场景后用左右方向键瞄准，空格或回车出钩。'}鱼篮数量为 {basketCount(game)}。</span>
     </main>
   )
 }
