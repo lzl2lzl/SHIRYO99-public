@@ -31,9 +31,9 @@
 .fishing-sky-body:hover { transform: translateY(-1px); }
 .fishing-sky-body:active { transform: scale(.95); }
 .fishing-shiro-input { position: absolute; left: 84.1%; top: 12.667%; width: 15.64%; height: 14.667%; min-width: 44px; padding: 0; background: transparent; border-radius: 10px; }
-.fishing-shiro-input:not(:disabled):active { background: #f3f4e81a; }
 .fishing-ryo-input { position: absolute; left: 64.87%; top: 12.667%; width: 17%; height: 14.667%; min-width: 44px; padding: 0; background: transparent; border-radius: 10px; }
-.fishing-ryo-input:not(:disabled):active { background: #f3f4e81a; }
+.fishing-screen :is(.fishing-ryo-input, .fishing-shiro-input) { appearance: none; box-shadow: none; }
+.fishing-screen :is(.fishing-ryo-input, .fishing-shiro-input):not(:focus-visible) { outline: none; }
 .fishing-screen .fishing-count { position: absolute; bottom: 2px; left: 6px; min-width: 78px; padding: 0 10px; display: flex; align-items: center; color: #e0f0ec; border-radius: 8px; background: transparent; font-size: 20px; line-height: 1; font-variant-numeric: tabular-nums; transition: background-color 150ms ease; }
 .fishing-count span { font-size: 13px; margin-left: 3px; }
 .fishing-count[aria-pressed="true"] { background: #b7e5dc1c; }

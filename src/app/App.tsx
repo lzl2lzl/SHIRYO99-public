@@ -52,9 +52,11 @@ function Lobby({ onEnter }: { onEnter: (event: MouseEvent<HTMLAnchorElement>, id
       </nav>
     </div>
     <footer className="lobby-footer">
-      <p>非官方同人小游戏。角色权益归原权利方所有。</p>
-      <p>联系作者：小红书@并不知道什么叫做可爱</p>
-      <p>立绘感谢：蒲绒绒</p>
+      <div className="lobby-credits">
+        <p>小红书@并不知道什么叫做可爱</p>
+        <p>立绘@蒲绒绒</p>
+      </div>
+      <p className="lobby-disclaimer"><span>非官方同人小游戏</span><span>角色权益归原作所有</span></p>
     </footer>
   </main>
 }
