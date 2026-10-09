@@ -371,11 +371,11 @@ function Fishing({ onExit }: GameScreenProps) {
 
   return (
     <main className={`fishing-screen${backgrounded ? ' is-background' : ''}${reducedMotion ? ' reduced-motion' : ''}`} data-phase={game.phase} data-time-of-day={sceneTime} data-ending-fishing={game.endingFishing} data-turning-water={Boolean(game.waterTurnover)}>
-      <header className="fishing-header" inert={ended}>
+      <header className="fishing-header" inert={ended || Boolean(introGuide)}>
         <button type="button" onClick={onExit} aria-label="返回游戏大厅">← 返回</button>
       </header>
 
-      <div className="fishing-stage" inert={ended} data-guide={introGuide} style={{ '--fishing-dialogue-font': `${fontSize}px` } as CSSProperties}>
+      <div className="fishing-stage" inert={ended || Boolean(introGuide)} data-guide={introGuide} style={{ '--fishing-dialogue-font': `${fontSize}px` } as CSSProperties}>
         <svg ref={scene} className="fishing-world" viewBox="0 0 390 600" aria-hidden="true" data-casts={game.casts}>
           <defs>
             <linearGradient id="fishing-soft-water" x1="0" y1="0" x2=".25" y2="1">

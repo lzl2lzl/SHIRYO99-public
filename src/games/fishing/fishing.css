@@ -69,7 +69,8 @@
 .fishing-intro { position: absolute; left: 9%; width: 82%; top: 41%; padding: 0; text-align: center; background: transparent; color: #fcf6dc !important; pointer-events: auto; }
 .fishing-intro p { margin: 0; font-size: clamp(18px, 5.4cqi, 24px); line-height: 1.8; font-weight: 600; text-wrap: balance; text-shadow: 0 2px 6px #163e47; }
 .fishing-intro > .fishing-next { justify-content: center; margin-top: 20px; color: #cce1da; }
-.fishing-screen .fishing-intro-guide { position: absolute; inset: 0; z-index: 5; width: 100%; height: 100%; padding: 0; background: transparent; color: #f3f4e8; }
+.fishing-intro-guide { position: fixed; inset: 0; z-index: 30; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; color: #f3f4e8; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.fishing-intro-guide:focus-visible { outline: 2px solid #f3f4e8; outline-offset: -4px; }
 .fishing-intro-guide > svg { display: block; width: 100%; height: 100%; pointer-events: none; }
 .fishing-guide-copy { position: absolute; transform: translateX(-50%); white-space: nowrap; font-size: 20px; font-weight: 700; line-height: 1.5; animation: fishing-guide-reveal 300ms cubic-bezier(.16,1,.3,1) both; }
 .fishing-guide-circle { stroke-dasharray: 1; animation: fishing-guide-circle 460ms cubic-bezier(.16,1,.3,1) both; }
@@ -133,5 +134,6 @@
   .fishing-header { height: 52px; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .fishing-intro-guide * { animation: none !important; transition: none !important; }
   .fishing-screen *, .fishing-screen *::before { animation: none !important; transition: none !important; }
 }

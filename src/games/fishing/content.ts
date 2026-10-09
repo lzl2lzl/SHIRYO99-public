@@ -53,7 +53,7 @@ export const INTRO_BEATS: readonly DialogueBeat[] = [
   { text: '月云了获得了一个可以捕捉偶像的鱼竿' },
   { text: '钓到的偶像会被捉进鱼篮里' },
   { text: '遇见……可怕的事……' },
-  { text: '作弊点这里。', guideTarget: 'hints' },
+  { text: '作弊点这里~', guideTarget: 'hints' },
   { text: '毁灭偶像！！！', guideTarget: 'turnover' },
   { text: '哈哈！', guideTarget: 'time' },
 ]

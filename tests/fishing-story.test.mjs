@@ -263,7 +263,7 @@ test('the introduction keeps three opening lines then three anchored guide steps
     '遇见……可怕的事……',
   ])
   assert.equal(INTRO_LINES.length, 6)
-  assert.deepEqual(INTRO_LINES.slice(3), ['作弊点这里。', '毁灭偶像！！！', '哈哈！'])
+  assert.deepEqual(INTRO_LINES.slice(3), ['作弊点这里~', '毁灭偶像！！！', '哈哈！'])
   assert.deepEqual(INTRO_BEATS.map(beat => beat.guideTarget), [undefined, undefined, undefined, 'hints', 'turnover', 'time'])
   assert.equal(INTRO_LINES.join('').includes('轻点场景空白处'), false)
   assert.equal(INTRO_LINES.join('').includes('深处的名字'), false)
