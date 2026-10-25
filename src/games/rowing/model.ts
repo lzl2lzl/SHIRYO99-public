@@ -1,5 +1,6 @@
 import { createDailyDialogue, tickDailyDialogue, type DailyDialogue } from './daily-dialogue.ts'
 import { calendarAt } from './calendar.ts'
+import { riverHalfWidth } from './river.ts'
 import { createCalendarDialogue, tickCalendarDialogue, type CalendarDialogue } from './calendar-dialogue.ts'
 import { COUPLE_COUNT, CONTACT_DISTANCE, createCouple, createCoupleMotion, moveCouple, departCouple, hullContact, coupleVisible, coupleTarget, riverCenter, type CoupleBoat } from './couples.ts'
 import { COUPLE_LINES, coupleLineSeconds, pickCoupleChat, type CoupleChat } from './couple-dialogue.ts'
@@ -67,6 +68,7 @@ export interface RowingState {
   trail: { x: number; y: number; age: number }[]
   trailTimer: number
   cameraY: number
+  cameraX: number
   couples: CoupleBoat[]
   nextCoupleId: number
   encounter: Encounter | null
@@ -89,7 +91,7 @@ export function createRowing(random: () => number = Math.random, withOpening = f
     lastShiro: -100, lastRyo: -100, shiroAction: 'rest', ryoAction: 'rest',
     shiroUntil: 0, ryoUntil: 0, laughUntil: 0, shiroStrokes: 0, ryoStrokes: 0,
     taps: 0, distance: 0, turnTravel: 0, trail: [], trailTimer: 0,
-    cameraY: 0, couples: [-740, -480, -240, 240, 480, 720, 960].map((offset, id) => createCouple(id, (withOpening ? 480 : 370) + offset, random)),
+    cameraX: 0, cameraY: 0, couples: [-740, -480, -240, 240, 480, 720, 960].map((offset, id) => createCouple(id, (withOpening ? 480 : 370) + offset, random)),
     nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, firstChiefSeen: false, daily: createDailyDialogue(), collisionCooldown: 0, collisions: 0,
     trafficNextAt: 3, coupleChat: null, coupleChatNextAt: 3, calendar: createCalendarDialogue(),
   }
@@ -104,12 +106,12 @@ function updateTraffic(state: RowingState, random: () => number) {
   state.trafficNextAt = state.elapsed + 2
   const active = state.couples.filter(b => !b.departing).sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))
   for (const boat of active.slice(target)) departCouple(boat, state, 'closing')
-  state.couples = state.couples.filter(b => b.departing ? coupleVisible(b, state.cameraY) : b.y >= state.cameraY - 260 && b.y <= state.cameraY + 1250)
+  state.couples = state.couples.filter(b => b.departing ? coupleVisible(b, state.cameraY, state.cameraX) : b.y >= state.cameraY - 260 && b.y <= state.cameraY + 1250 && b.x >= state.cameraX - 260 && b.x <= state.cameraX + 650)
   if (state.couples.length < target) {
     const preferTop = state.nextCoupleId % 2 === 0
     for (const fromTop of [preferTop, !preferTop]) {
       const y = state.cameraY + (fromTop ? -180 : 880)
-      const boat = createCouple(state.nextCoupleId, y, random)
+      const boat = createCouple(state.nextCoupleId, y, random, state.minutes, state.cameraX)
       boat.motion!.direction = fromTop ? 1 : -1; boat.heading = fromTop ? Math.PI : 0
       if (!state.couples.every(b => hullContact(b, boat).distance > 140)) continue
       state.nextCoupleId++
@@ -122,7 +124,7 @@ function updateTraffic(state: RowingState, random: () => number) {
 function tickCoupleChat(state: RowingState, dt: number, random: () => number) {
   const busy = state.calendar.chat || state.dialogue !== null || state.encounter || state.daily.chat || (state.chiefVisit && !state.chiefVisit.done)
   const chat = state.coupleChat, boat = state.couples.find(b => b.id === chat?.boatId)
-  if (chat && (busy || !boat || !coupleVisible(boat, state.cameraY))) {
+  if (chat && (busy || !boat || !coupleVisible(boat, state.cameraY, state.cameraX))) {
     state.coupleChat = null; state.coupleChatNextAt = state.elapsed + 5
   } else if (chat) {
     chat.age += dt
@@ -132,7 +134,7 @@ function tickCoupleChat(state: RowingState, dt: number, random: () => number) {
     }
   }
   if (busy || state.coupleChat || state.elapsed < state.coupleChatNextAt) return
-  const candidates = state.couples.filter(b => !b.chiefSurname && b.y > state.cameraY + 100 && b.y < state.cameraY + 600
+  const candidates = state.couples.filter(b => !b.chiefSurname && coupleVisible(b, state.cameraY, state.cameraX) && b.y > state.cameraY + 100 && b.y < state.cameraY + 600
     && state.elapsed >= (b.nextChatAt ?? 0) && (!b.departing || (b.departureReason !== 'closing' && !b.departureRemark)))
   const speaker = candidates.find(b => b.departing) ?? candidates[Math.min(candidates.length - 1, Math.floor(random() * candidates.length))]
   if (speaker) {
@@ -275,8 +277,11 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   state.distance += Math.abs(travel)
   // The river is unbounded longitudinally; a following camera replaces the old invisible end wall.
   const center = riverCenter(state.y)
-  state.x += (Math.max(center - 95 - state.x, 0) - Math.max(state.x - center - 95, 0)) * dt * 2
+  const limit = riverHalfWidth(state.minutes) - 74
+  state.x += (Math.max(center - limit - state.x, 0) - Math.max(state.x - center - limit, 0)) * dt * 2
   state.cameraY += (state.y - 370 - state.cameraY) * (1 - Math.exp(-3 * dt))
+  const horizontalTarget = state.x - 195 - Math.max(-55, Math.min(55, state.x - 195))
+  state.cameraX += (horizontalTarget - state.cameraX) * (1 - Math.exp(-3 * dt))
   const movingPlayer = { x: state.x, y: state.y, heading: state.heading, velocityX: (state.x - previousX) / dt, velocityY: (state.y - previousY) / dt }
   state.collisionCooldown = Math.max(0, state.collisionCooldown - dt)
   if (state.encounter) {
@@ -288,10 +293,10 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
     state.dialogue !== null || Boolean(state.encounter) || Boolean(state.daily.chat) || Boolean(state.chiefVisit && !state.chiefVisit.done))
   if (state.calendar.chat) state.laughUntil = 0
   for (const boat of state.couples) {
-    moveCouple(boat, { ...movingPlayer, spin: state.spin }, state.elapsed, dt, state.couples)
+    moveCouple(boat, { ...movingPlayer, spin: state.spin }, state.elapsed, dt, state.couples, state.minutes, state.cameraX)
     // Later evenings redraw once per visible boat per night, never every frame.
     const night = Math.floor(state.minutes / 1440)
-    if (night > 0 && chiefHours(state.minutes) && coupleVisible(boat, state.cameraY)) {
+    if (night > 0 && chiefHours(state.minutes) && coupleVisible(boat, state.cameraY, state.cameraX)) {
       if (boat.chiefNight !== undefined && boat.chiefNight !== night && state.chiefVisit?.boatId !== boat.id) {
         boat.chiefChecked = false; boat.chiefSurname = undefined; boat.chiefGreeted = false
       }
@@ -320,14 +325,14 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
     }
   }
   const speakingBoat = state.couples.find(candidate => candidate.id === state.encounter?.boatId)
-  if (!speakingBoat || !coupleVisible(speakingBoat, state.cameraY)) state.encounter = null
+  if (!speakingBoat || !coupleVisible(speakingBoat, state.cameraY, state.cameraX)) state.encounter = null
   tickDailyDialogue(state.daily, previousMinutes, state.minutes, dt,
     Boolean(state.calendar.chat) || state.dialogue !== null || Boolean(state.encounter) || Boolean(state.chiefVisit && !state.chiefVisit.done), random)
   if (state.daily.chat) state.laughUntil = 0
   const visit = state.chiefVisit
   if (visit) {
     const boat = state.couples.find(candidate => candidate.id === visit.boatId)
-    if (!boat || !coupleVisible(boat, state.cameraY)) {
+    if (!boat || !coupleVisible(boat, state.cameraY, state.cameraX)) {
       state.chiefVisit = null
       if (state.encounter?.boatId === visit.boatId) state.encounter = null
     } else if (!visit.done && !state.calendar.chat && state.dialogue === null && !state.encounter && !state.daily.chat) {
@@ -341,7 +346,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   }
   if (!state.calendar.chat && !state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && chiefHours(state.minutes)) {
     const firstNight = state.minutes < 1440
-    const boat = state.couples.filter(candidate => coupleVisible(candidate, state.cameraY)
+    const boat = state.couples.filter(candidate => coupleVisible(candidate, state.cameraY, state.cameraX)
       && (firstNight ? !state.firstChiefSeen : candidate.chiefSurname && !candidate.chiefGreeted))
       .sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))[0]
     if (boat) {

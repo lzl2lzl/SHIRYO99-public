@@ -1,4 +1,6 @@
 import { calendarAt } from './calendar.ts'
+import { trafficCenter, RIVER_START_MINUTE } from './river.ts'
+export { riverCenter } from './river.ts'
 export type CoupleStyle = 'steady' | 'resting' | 'wobbly' | 'fast' | 'distracted'
 export interface CoupleMotion {
   speed: number; lane: number; amplitude: number; frequency: number; phase: number; pulseFrequency: number; pulsePhase: number
@@ -14,9 +16,8 @@ export interface Hull { x: number; y: number; heading: number }
 export const COUPLE_COUNT = 7
 export const CONTACT_DISTANCE = 110
 export const CLEARANCE = 128
-export function riverCenter(y: number) { return 195 + Math.sin(y / 420) * 22 + Math.sin(y / 190) * 12 }
-export function coupleVisible(boat: CoupleBoat, cameraY: number) {
-  return boat.y + 160 >= cameraY && boat.y - 160 <= cameraY + 700 && boat.x + 160 >= 0 && boat.x - 160 <= 390
+export function coupleVisible(boat: CoupleBoat, cameraY: number, cameraX = 0) {
+  return boat.y + 160 >= cameraY && boat.y - 160 <= cameraY + 700 && boat.x + 160 >= cameraX && boat.x - 160 <= cameraX + 390
 }
 export function coupleTarget(minutes: number) {
   const hour = ((minutes / 60) % 24 + 24) % 24
@@ -32,9 +33,9 @@ export function createCoupleMotion(random: () => number = Math.random): CoupleMo
     frequency: .14 + random() * .18, phase: random() * Math.PI * 2, pulseFrequency: 3.5 + random() * 1.8,
     pulsePhase: random() * Math.PI * 2, pauseLength: 7 + random() * 6, cycle: 24 + random() * 12 }
 }
-export function createCouple(id: number, y: number, random: () => number = Math.random): CoupleBoat {
+export function createCouple(id: number, y: number, random: () => number = Math.random, minutes = RIVER_START_MINUTE, cameraX = 0): CoupleBoat {
   const motion = createCoupleMotion(random)
-  return { id, x: riverCenter(y) + motion.lane, y, heading: motion.direction > 0 ? Math.PI : 0, motion }
+  return { id, x: trafficCenter(y, minutes, cameraX) + motion.lane, y, heading: motion.direction > 0 ? Math.PI : 0, motion }
 }
 function samples(hull: Hull) {
   return [-40, 0, 40].map(offset => ({ x: hull.x + Math.sin(hull.heading) * offset, y: hull.y - Math.cos(hull.heading) * offset }))
@@ -56,7 +57,7 @@ export function departCouple(boat: CoupleBoat, player: Hull, reason: 'collision'
 }
 
 /** Boat-sized collision capsules, individual rowing strokes, and a persistent route away from trouble. */
-export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; velocityX?: number; velocityY?: number }, elapsed: number, dt: number, peers: CoupleBoat[] = []) {
+export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; velocityX?: number; velocityY?: number }, elapsed: number, dt: number, peers: CoupleBoat[] = [], minutes = RIVER_START_MINUTE, cameraX = 0) {
   if (!Number.isFinite(dt) || dt <= 0) return
   dt = Math.min(dt, .1)
   const motion = boat.motion ??= createCoupleMotion()
@@ -64,7 +65,7 @@ export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; vel
   if (Math.abs(player.spin ?? 0) > 1.05 && proximity < 285) departCouple(boat, player, 'spin')
   boat.stopped = !boat.departing && motion.style === 'resting' && (elapsed + motion.phase * 3) % motion.cycle < motion.pauseLength
   boat.strokePhase = elapsed * motion.pulseFrequency + motion.pulsePhase
-  const lane = riverCenter(boat.y) + motion.lane + Math.sin(elapsed * motion.frequency + motion.phase) * motion.amplitude
+  const lane = trafficCenter(boat.y, minutes, cameraX) + motion.lane + Math.sin(elapsed * motion.frequency + motion.phase) * motion.amplitude
   let vx = (lane - boat.x) * .5
   let vy = motion.direction * (boat.departing ? 38 : boat.stopped ? .8 : motion.speed * (.82 + .18 * Math.sin(boat.strokePhase)))
   if (boat.stopped) vx *= .06
@@ -98,9 +99,11 @@ export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; vel
     vx += (dx >= 0 ? 1 : -1) * strength * 16
     vy += ny * strength * 10
   }
-  const bank = riverCenter(boat.y)
-  if (boat.x > bank + 112) vx = Math.min(vx, (bank + 112 - boat.x) * 1.5)
-  if (boat.x < bank - 112) vx = Math.max(vx, (bank - 112 - boat.x) * 1.5)
+  // Keep local traffic spacing identical as the world expands; this lane follows the neighbourhood.
+  const bank = trafficCenter(boat.y, minutes, cameraX)
+  const limit = 112
+  if (boat.x > bank + limit) vx = Math.min(vx, (bank + limit - boat.x) * 1.5)
+  if (boat.x < bank - limit) vx = Math.max(vx, (bank - limit - boat.x) * 1.5)
   const speed = Math.hypot(vx, vy), maximum = boat.departing ? 42 : 35
   if (speed > maximum) { vx *= maximum / speed; vy *= maximum / speed }
   const oldHeading = boat.heading, oldX = boat.x, oldY = boat.y
@@ -118,7 +121,7 @@ export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; vel
     let found = false
     for (let i = 0; i < 24; i++) {
       const angle = i * Math.PI / 12, x = oldX + Math.cos(angle) * 9 * dt, y = oldY + Math.sin(angle) * 9 * dt
-      if (Math.abs(x - riverCenter(y)) <= 118 && safe(x, y, oldHeading)) { boat.x = x; boat.y = y; found = true; break }
+      if (Math.abs(x - trafficCenter(y, minutes, cameraX)) <= limit + 6 && safe(x, y, oldHeading)) { boat.x = x; boat.y = y; found = true; break }
     }
     if (!found) { boat.x = oldX; boat.y = oldY }
   } else { boat.x += vx * dt * fraction; boat.y += vy * dt * fraction; boat.heading = heading }

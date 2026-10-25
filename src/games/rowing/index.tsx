@@ -4,6 +4,7 @@ import { chiefLines, clockDisplayAt, createRowing, EVENING_LINES, complaintSecon
 import { bankPath, bankX, riverDetails } from './scenery'
 import { placeResponse, rowingBounds } from './bubble-layout'
 import { BirthdayMoment } from './BirthdayMoment'
+import { CALENDAR_EPOCH } from './calendar'
 import './rowing.css'
 
 
@@ -34,9 +35,22 @@ function Portrait({ who, active, masked = false }: { who: Rower; active: boolean
 }
 
 export function RowingGame({ onExit }: GameScreenProps) {
-  const [initialGame] = useState(() => createRowing(Math.random, true))
+  const [initialGame] = useState(() => {
+    // Local review links exercise the real midnight event; production always starts normally.
+    const birthday = import.meta.env.DEV ? new URLSearchParams(location.search).get('birthday') : null
+    const preview = birthday === 'shiro' || birthday === 'ryo'
+    const state = createRowing(Math.random, !preview)
+    if (preview) {
+      const midnight = birthday === 'shiro' ? Date.UTC(2026, 7, 24) : Date.UTC(2026, 8, 9)
+      state.minutes = (midnight - CALENDAR_EPOCH - 1000) / 60000
+      state.eveningSeen = true
+      state.effort = true
+      state.couples = []
+    }
+    return state
+  })
   const game = useRef(initialGame)
-  const dockOrigin = useRef(initialGame.y)
+  const dockOrigin = useRef(initialGame.opening ? initialGame.y : -1000)
   const [, repaint] = useState(0)
   const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
   const [hidden, setHidden] = useState(document.hidden)
@@ -135,7 +149,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     const x = who === 'shiro' ? -35 : 35
     const depth = Math.sin(radians) * x + Math.cos(radians) * 20
     return { who, depth,
-      x: state.x / 390 * size.width + (Math.cos(radians) * x - Math.sin(radians) * 20) * boatScale,
+      x: (state.x - state.cameraX) / 390 * size.width + (Math.cos(radians) * x - Math.sin(radians) * 20) * boatScale,
       y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) + depth * boatScale,
     }
   })
@@ -168,10 +182,10 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const responseWho = calendarLine?.who ?? (encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who ?? (coupleLine ? 'couple' : undefined))
   const responseSpeaker = calendarLine ? calendarLine.who==='ryo'?'月云了':'宇都木士郎' : encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? (coupleLine ? '周围的情侣' : '')
   const responseSeat = seats[responseWho === 'ryo' ? 1 : 0]
-  const encounterAnchor = responseWho === 'couple' && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 50) - 110 * boatScale } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
+  const encounterAnchor = responseWho === 'couple' && couple ? { x: (couple.x - state.cameraX) / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 50) - 110 * boatScale } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
   const responseWidth = Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44, responseSpeaker.length * 12 + 44))
   const responseHeight = measuredResponse.text === response && measuredResponse.width === responseWidth ? measuredResponse.height : 62 + Math.ceil(response.length * 16 / (responseWidth - 40)) * 26
-  const protectedBoat = rowingBounds({ x: state.x / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) }, radians, boatScale, seats)
+  const protectedBoat = rowingBounds({ x: (state.x - state.cameraX) / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) }, radians, boatScale, seats)
   const responsePosition = placeResponse(size, encounterAnchor, protectedBoat, responseWidth, responseHeight)
   useLayoutEffect(() => {
     const element = responseElement.current
@@ -200,13 +214,13 @@ export function RowingGame({ onExit }: GameScreenProps) {
     <svg className="rowing-water" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true">
       <defs><linearGradient id="rowing-water-light" x2=".9" y2="1"><stop stopColor="white" stopOpacity=".14"/><stop offset="1" stopColor="white" stopOpacity="0"/></linearGradient></defs>
       {[false, true].map(right => <g key={String(right)}>
-        <path className="rowing-bank" d={bankPath(state.cameraY, right)} />
-        <path className="rowing-bank-inner" d={bankPath(state.cameraY, right, 12)} />
+        <path className="rowing-bank" d={bankPath(state.cameraY, right, 0, state.minutes, state.cameraX)} />
+        <path className="rowing-bank-inner" d={bankPath(state.cameraY, right, 12, state.minutes, state.cameraX)} />
       </g>)}
       <path d="M36 -180L275 880H350L110 -180Z" fill="url(#rowing-water-light)"/>
       {details.map(p => <g key={p.id}>
         <path className="rowing-waterline" d={`M${p.x} ${p.y}q12 -5 26 0t22 0`} />
-        <g className="rowing-reeds" transform={`translate(${bankX(p.y + state.cameraY, p.right) + (p.right ? 9 : -9)} ${p.y + 30})`}>
+        <g className="rowing-reeds" transform={`translate(${(bankX(p.y + state.cameraY, p.right, state.minutes) - state.cameraX) + (p.right ? 9 : -9)} ${p.y + 30})`}>
           <path d="M0 0Q-9 -11 -7 -23M0 0Q1 -16 6 -28M0 0Q10 -6 13 -17" />
           {p.id % 3 === 0 ? <><circle cx="-7" cy="-24" r="3"/><circle cx="6" cy="-28" r="3"/></> : null}
         </g>
@@ -214,13 +228,13 @@ export function RowingGame({ onExit }: GameScreenProps) {
     </svg>
     <div className="rowing-dock" aria-hidden="true" style={{ top: dockY, width: size.width / 2 + 35 * boatScale + 18 }}><i/><i/><i/></div>
     <svg className="rowing-stage" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true">
-      {state.trail.map((p, i) => <ellipse key={i} cx={p.x} cy={p.y - state.cameraY} rx={5 + p.age * 6} ry={2 + p.age * 2} className="rowing-trail" opacity={Math.max(0, (1 - p.age / 3) * .18)} />)}
+      {state.trail.map((p, i) => <ellipse key={i} cx={p.x - state.cameraX} cy={p.y - state.cameraY} rx={5 + p.age * 6} ry={2 + p.age * 2} className="rowing-trail" opacity={Math.max(0, (1 - p.age / 3) * .18)} />)}
     </svg>
     <div className="rowing-boat-layer rowing-couples" aria-hidden="true">
       {state.couples.map(boat => {
         const angle = boat.heading * 180 / Math.PI, stroke = reduced || boat.stopped ? 0 : Math.sin(boat.strokePhase ?? 0) * 24
         return <div key={boat.id} className="rowing-boat rowing-couple" data-boat={boat.id} data-chief={boat.chiefSurname} data-style={boat.motion?.style} data-departing={boat.departing || false} data-stopped={boat.stopped || false}
-          style={{ left: `${boat.x / 390 * 100}%`, top: `${(boat.y - state.cameraY) / 700 * 100}%`, transform: `translate(-50%, -50%) rotate(${angle}deg)` }}>
+          style={{ left: `${(boat.x - state.cameraX) / 390 * 100}%`, top: `${(boat.y - state.cameraY) / 700 * 100}%`, transform: `translate(-50%, -50%) rotate(${angle}deg)` }}>
           <svg className="rowing-hull" viewBox="-110 -125 220 250"><BoatHull/>
             <g className="rowing-oar rowing-oar-left" style={{ transform: `rotate(${stroke - 12}deg)` }}><path d="M-22 3L-91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M-77 20L-105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/></g>
             <g className="rowing-oar rowing-oar-right" style={{ transform: `rotate(${-stroke + 12}deg)` }}><path d="M22 3L91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M77 20L105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/></g>
@@ -232,7 +246,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
       })}
     </div>
     <div className="rowing-boat-layer">
-      <div className="rowing-boat" style={{ left: `${state.x / 390 * 100}%`, top: `${(state.y - state.cameraY) / 700 * 100}%` }}>
+      <div className="rowing-boat" style={{ left: `${(state.x - state.cameraX) / 390 * 100}%`, top: `${(state.y - state.cameraY) / 700 * 100}%` }}>
         <svg className="rowing-hull" viewBox="-110 -125 220 250" aria-hidden="true">
           <BoatHull/>
           <g className="rowing-oar rowing-oar-left" data-active={state.shiroAction === 'stroke'} style={{ transform: `rotate(${state.shiroAction === 'stroke' && !reduced ? Math.sin((.7 - (state.shiroUntil - state.elapsed)) / .7 * Math.PI * 2) * 32 : -12}deg)` }}>

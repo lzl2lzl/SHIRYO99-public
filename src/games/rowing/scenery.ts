@@ -1,17 +1,17 @@
-import { riverCenter } from './model'
+import { riverCenter, riverHalfWidth, RIVER_START_MINUTE } from './river.ts'
 
-export function bankX(y: number, right: boolean) {
-  return riverCenter(y) + (right ? 169 : -169) + Math.sin(y / 135 + (right ? 2 : 0)) * 13
+export function bankX(y: number, right: boolean, minutes = RIVER_START_MINUTE) {
+  return riverCenter(y) + (right ? 1 : -1) * riverHalfWidth(minutes) + Math.sin(y / 135 + (right ? 2 : 0)) * 13
 }
 
 /** Continuous world-space riverbanks: moving the camera never swaps scenery beneath the boat. */
-export function bankPath(cameraY: number, right: boolean, inset = 0) {
+export function bankPath(cameraY: number, right: boolean, inset = 0, minutes = RIVER_START_MINUTE, cameraX = 0) {
   const start = Math.floor(cameraY / 90) * 90 - 180
   const points = Array.from({ length: 13 }, (_, i) => {
     const y = start + i * 90
-    return { x: bankX(y, right) + (right ? inset : -inset), y: y - cameraY }
+    return { x: bankX(y, right, minutes) - cameraX + (right ? inset : -inset), y: y - cameraY }
   })
-  const edge = right ? 500 : -110
+  const edge = right ? Math.max(500, ...points.map(p => p.x + 100)) : Math.min(-110, ...points.map(p => p.x - 100))
   let path = `M${edge} ${points[0].y}L${points[0].x} ${points[0].y}`
   for (let i = 1; i < points.length - 1; i++) {
     const p = points[i], next = points[i + 1]
