@@ -74,8 +74,8 @@ export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; vel
   }
   for (const peer of peers) {
     if (peer.id === boat.id || !peer.motion || hullContact(peer, boat).distance >= 190) continue
-    // Let an escaping boat pass; opposing boats choose one flow rather than deadlocking bow to bow.
-    if (!boat.departing && (peer.departing || peer.id < boat.id) && motion.direction !== peer.motion.direction) {
+    // Give a departing boat room without turning every incoming boat back at the river entrance.
+    if (!boat.departing && peer.departing && motion.direction !== peer.motion.direction) {
       motion.direction = peer.motion.direction
       vy = motion.direction * Math.max(Math.abs(vy), peer.departing ? 30 : 18)
       boat.stopped = false

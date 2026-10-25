@@ -106,9 +106,10 @@ function updateTraffic(state: RowingState, random: () => number) {
     const preferTop = state.nextCoupleId % 2 === 0
     for (const fromTop of [preferTop, !preferTop]) {
       const y = state.cameraY + (fromTop ? -180 : 880)
-      if (!state.couples.every(b => Math.abs(b.y - y) > 220)) continue
-      const boat = createCouple(state.nextCoupleId++, y, random)
+      const boat = createCouple(state.nextCoupleId, y, random)
       boat.motion!.direction = fromTop ? 1 : -1; boat.heading = fromTop ? Math.PI : 0
+      if (!state.couples.every(b => hullContact(b, boat).distance > 140)) continue
+      state.nextCoupleId++
       state.couples.push(boat)
       break
     }

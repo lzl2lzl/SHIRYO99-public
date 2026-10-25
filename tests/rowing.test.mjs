@@ -521,6 +521,21 @@ test('traffic is sparse in the morning, busier after noon and absent from midnig
   }
 })
 
+test('busier hours produce more visible traffic, not merely offscreen boats in a larger pool', () => {
+  for (const seed of [1, 7, 14]) {
+    const random = seeded(seed), g = createRowing(random), counts = { morning: [], afternoon: [], night: [] }
+    for (let i = 0; i < 9500; i++) {
+      tickRowing(g, .1, random)
+      if (g.minutes < 1800) continue
+      const hour = g.minutes / 60 % 24, period = hour < 6 ? null : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'night'
+      if (period) counts[period].push(g.couples.filter(b => b.y > g.cameraY && b.y < g.cameraY + 700).length)
+    }
+    const average = key => counts[key].reduce((a, b) => a + b, 0) / counts[key].length
+    assert.ok(average('afternoon') > average('morning') + .5, `Afternoon seed ${seed}`)
+    assert.ok(average('night') > average('morning') + .3, `Evening seed ${seed}`)
+  }
+})
+
 test('collision bubbles and tails avoid the whole rotated boat and portraits at narrow and desktop sizes', () => {
   for (const width of [320, 390, 560]) for (const height of [640, 844]) {
     const scale = Math.max(180, Math.min(230, width * .48)) / 220
