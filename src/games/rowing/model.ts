@@ -84,6 +84,11 @@ function impulse(state: RowingState, who: Rower, reverse = false, strength = 1) 
   }
 }
 
+/** Starts reluctant at 09:00; forward outcomes together never exceed 50%, even after midnight. */
+export function ryoForwardChance(minutes: number) {
+  return .05 + .45 * Math.max(0, Math.min(1, (minutes - 9 * 60) / (EVENING_MINUTE - 9 * 60)))
+}
+
 /** Independent weighted draws: no sequence, pity counter, or dependence on tapping rhythm. */
 export function row(state: RowingState, who: Rower, random: () => number = Math.random): RowAction | null {
   const since = state.elapsed - (who === 'shiro' ? state.lastShiro : state.lastRyo)
@@ -96,15 +101,16 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
   }
   state.lastRyo = state.elapsed
   const chance = Math.max(0, Math.min(.9999, random()))
+  const forwardChance = ryoForwardChance(state.minutes)
+  if (chance < forwardChance) {
+    impulse(state, who, false, chance >= forwardChance * .8 ? 1.45 : 1)
+    return state.ryoAction
+  }
   if (state.effort) {
-    impulse(state, who, chance >= .8, chance >= .7 && chance < .8 ? 1.45 : 1)
+    impulse(state, who, true)
     return state.ryoAction
   }
-  if (chance < .75) {
-    impulse(state, who, false, chance >= .65 ? 1.45 : 1)
-    return state.ryoAction
-  }
-  if (chance < .85) {
+  if (chance < forwardChance + (1 - forwardChance) / 2) {
     state.ryoAction = 'refuse'; state.ryoUntil = state.elapsed + .85
     return 'refuse'
   }

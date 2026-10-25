@@ -223,7 +223,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     <footer className="rowing-controls">
       <p className="rowing-instruction" style={{ visibility: state.taps < 4 && state.elapsed < 15 ? 'visible' : 'hidden' }}>可以双指一起划，也可以按住两边。</p>
       <div className="rowing-paddles">
-        {(['shiro', 'ryo'] as const).map(who => <button key={who} {...inputs(who)} className={`rowing-paddle rowing-paddle-${who}`} data-held={[...held.current.values()].includes(who)}>
+        {(['shiro', 'ryo'] as const).map(who => <button key={who} {...inputs(who)} className={`rowing-paddle rowing-paddle-${who}`} data-action={who === 'shiro' ? state.shiroAction : state.ryoAction} data-held={[...held.current.values()].includes(who)}>
           <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M23 4L10 22M10 18l-5 7q-1 2 1 3t3 0l5-7"/></svg>
           <span>{who === 'shiro' ? '宇都木士郎' : '月云了'}<small aria-live="polite">{LABELS[who === 'shiro' ? state.shiroAction : state.ryoAction] || (who === 'ryo' && state.effort ? '努力中' : '划桨')}</small></span>
         </button>)}

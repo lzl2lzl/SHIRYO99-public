@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT } from '../src/games/rowing/model.ts'
+import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance } from '../src/games/rowing/model.ts'
 import { overlaps, placeResponse, rowingBounds } from '../src/games/rowing/bubble-layout.ts'
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
@@ -21,7 +21,7 @@ test('Shiro reliably rows and rapidly repeated events cannot spam strokes', () =
 })
 
 test('daytime Ryo can cooperate, refuse or push Shiro; morning push says haha', () => {
-  for (const [roll, result] of [[.1, 'stroke'], [.8, 'refuse'], [.9, 'push']]) {
+  for (const [roll, result] of [[.01, 'stroke'], [.3, 'refuse'], [.9, 'push']]) {
     const g = createRowing(); assert.equal(row(g, 'ryo', () => roll), result)
     if (result === 'stroke') { assert.equal(g.ryoStrokes, 1); assert.ok(g.spin < 0) }
     if (result === 'refuse') { assert.equal(g.spin, 0); assert.equal(g.speed, 0) }
@@ -29,7 +29,7 @@ test('daytime Ryo can cooperate, refuse or push Shiro; morning push says haha', 
   }
 })
 
-test('each draw is independent of tapping rhythm and previous actions; 75% of daytime outcomes propel forward', () => {
+test('each draw is independent of tapping rhythm and previous actions; morning forward outcomes total 5%', () => {
   const counts = { stroke: 0, strong: 0, refuse: 0, push: 0 }
   for (let i = 0; i < 1000; i++) {
     const fast = createRowing(), slow = createRowing()
@@ -40,10 +40,33 @@ test('each draw is independent of tapping rhythm and previous actions; 75% of da
     assert.equal(row(slow, 'ryo', () => draw), action)
     counts[action]++
   }
-  assert.deepEqual(counts, { stroke: 650, strong: 100, refuse: 100, push: 150 })
+  assert.deepEqual(counts, { stroke: 40, strong: 10, refuse: 475, push: 475 })
   const normal = createRowing(), strong = createRowing()
-  row(normal, 'ryo', () => .2); row(strong, 'ryo', () => .7)
+  row(normal, 'ryo', () => .01); row(strong, 'ryo', () => .045)
   assert.ok(strong.speed > normal.speed); assert.ok(Math.abs(strong.spin) > Math.abs(normal.spin))
+})
+
+test('forward probability rises from morning to evening and caps all forward actions together at 50%', () => {
+  for (const [hour, expected] of [[9, .05], [12, .2], [15, .35], [18, .5], [24, .5], [33, .5], [100, .5]]) {
+    assert.ok(Math.abs(ryoForwardChance(hour * 60) - expected) < 1e-10)
+    for (const effort of [false, true]) {
+      const counts = { stroke: 0, strong: 0, refuse: 0, push: 0, reverse: 0 }
+      for (let i = 0; i < 2000; i++) {
+        const g = createRowing(); g.minutes = hour * 60; g.effort = effort
+        counts[row(g, 'ryo', () => (i + .5) / 2000)]++
+      }
+      assert.equal(counts.stroke + counts.strong, Math.round(expected * 2000))
+      assert.ok(counts.stroke + counts.strong <= 1000)
+      if (effort) { assert.equal(counts.refuse + counts.push, 0); assert.equal(counts.reverse, 2000 - Math.round(expected * 2000)) }
+      else { assert.equal(counts.refuse, counts.push); assert.equal(counts.reverse, 0) }
+    }
+  }
+  let previous = 0
+  for (let minute = 0; minute <= 3 * 24 * 60; minute++) {
+    const probability = ryoForwardChance(minute)
+    assert.ok(probability >= previous && probability >= 0 && probability <= .5)
+    previous = probability
+  }
 })
 
 test('one-sided effort circles; matched strokes cancel turning and travel further', () => {
@@ -77,7 +100,7 @@ test('evening lines expire automatically while time, movement and both rowers co
 
 test('evening effort always rows, reverse strokes worsen Shiro-side spinning, never refuses or pushes', () => {
   for (const roll of [0, .2, .75, .9]) {
-    const g = createRowing(); g.effort = true
+    const g = createRowing(); g.effort = true; g.minutes = 18 * 60
     row(g, 'shiro'); const oldSpin = g.spin
     const action = row(g, 'ryo', () => roll)
     assert.ok(['stroke', 'strong', 'reverse'].includes(action))
