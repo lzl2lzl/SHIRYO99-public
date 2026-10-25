@@ -1,7 +1,7 @@
 import { createDailyDialogue, tickDailyDialogue, type DailyDialogue } from './daily-dialogue.ts'
 
 export type Rower = 'shiro' | 'ryo'
-export type RowAction = 'rest' | 'stroke' | 'strong' | 'refuse' | 'push' | 'reverse'
+export type RowAction = 'rest' | 'stroke' | 'strong' | 'refuse' | 'push' | 'reverse' | 'miss'
 export type Period = 'morning' | 'noon' | 'sunset' | 'night'
 export const MINUTES_PER_SECOND = 3
 export const START_MINUTE = 18 * 60
@@ -14,7 +14,7 @@ export const COMPLAINTS = ['啊！', '小心一点，没素质的家伙！', '�
 export const APOLOGIES = ['不好意思。', '真的非常不好意思。', '非常抱歉，我们会注意的。']
 export const CHIEF_SURNAMES = ['佐藤', '铃木', '高桥', '田中', '渡边', '伊藤', '山本', '中村', '小林', '加藤', '吉田']
 export interface CoupleMotion { speed: number; lane: number; amplitude: number; frequency: number; phase: number; pulseFrequency: number; pulsePhase: number }
-export interface CoupleBoat { id: number; x: number; y: number; heading: number; motion?: CoupleMotion; chiefChecked?: boolean; chiefSurname?: string; chiefGreeted?: boolean }
+export interface CoupleBoat { id: number; x: number; y: number; heading: number; motion?: CoupleMotion; chiefChecked?: boolean; chiefSurname?: string; chiefGreeted?: boolean; chiefNight?: number }
 export interface Encounter { boatId: number; complaint: string; apology: string; age: number }
 export interface ChiefVisit { boatId: number; surname: string; line: number; age: number; masked: boolean; done: boolean }
 export function chiefLines(surname: string) {
@@ -72,6 +72,7 @@ export interface RowingState {
   nextCoupleId: number
   encounter: Encounter | null
   chiefVisit: ChiefVisit | null
+  firstChiefSeen: boolean
   daily: DailyDialogue
   collisionCooldown: number
   collisions: number
@@ -93,7 +94,7 @@ export function createRowing(random: () => number = Math.random, withOpening = f
     taps: 0, distance: 0, turnTravel: 0, trail: [], trailTimer: 0,
     cameraY: 0, couples: [-160, 0, 170, 540, 700, 850, 1000, 1150].map((y, id) => ({
       id, x: riverCenter(y) + Math.sin(id * 2.3) * 78, y, heading: Math.PI + Math.sin(id) * .25, motion: createCoupleMotion(random),
-    })), nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, daily: createDailyDialogue(), collisionCooldown: 0, collisions: 0,
+    })), nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, firstChiefSeen: false, daily: createDailyDialogue(), collisionCooldown: 0, collisions: 0,
   }
 }
 
@@ -197,6 +198,21 @@ export function chiefHours(minutes: number) {
   return minute >= FORWARD_RAMP_START && minute < EVENING_MINUTE
 }
 
+/** Success, a wrong stroke and an ineffective stroke are separate outcomes. */
+export function chooseRyoAction(minutes: number, effort: boolean, draw: number): RowAction {
+  const chance = Math.max(0, Math.min(.9999, draw)), forward = ryoForwardChance(minutes)
+  if (chance < forward) return chance >= forward * .8 ? 'strong' : 'stroke'
+  if (effort) return chance < forward + .15 ? 'reverse' : 'miss'
+  return chance < forward + (1 - forward) / 2 ? 'refuse' : 'push'
+}
+
+/** Admit one complete exchange; ambient collision speech cannot interrupt a conversation. */
+function canStartBoatSpeech(state: RowingState) {
+  return !state.opening && state.dialogue === null && !state.encounter
+    && (!state.daily.chat || state.daily.chat.kind === 'random')
+    && (!state.chiefVisit || state.chiefVisit.done)
+}
+
 /** Independent weighted draws: no sequence, pity counter, or dependence on tapping rhythm. */
 export function row(state: RowingState, who: Rower, random: () => number = Math.random): RowAction | null {
   if (state.opening) return null
@@ -209,17 +225,20 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
     return 'stroke'
   }
   state.lastRyo = state.elapsed
-  const chance = Math.max(0, Math.min(.9999, random()))
-  const forwardChance = ryoForwardChance(state.minutes)
-  if (chance < forwardChance) {
-    impulse(state, who, false, chance >= forwardChance * .8 ? 1.45 : 1)
+  const action = chooseRyoAction(state.minutes, state.effort, random())
+  if (action === 'stroke' || action === 'strong') {
+    impulse(state, who, false, action === 'strong' ? 1.45 : 1)
     return state.ryoAction
   }
-  if (state.effort) {
+  if (action === 'reverse') {
     impulse(state, who, true)
     return state.ryoAction
   }
-  if (chance < forwardChance + (1 - forwardChance) / 2) {
+  if (action === 'miss') {
+    state.ryoAction = 'miss'; state.ryoUntil = state.elapsed + .7; state.ryoStrokes++
+    return 'miss'
+  }
+  if (action === 'refuse') {
     state.ryoAction = 'refuse'; state.ryoUntil = state.elapsed + .85
     return 'refuse'
   }
@@ -280,10 +299,17 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   }
   for (const boat of state.couples) {
     moveCouple(boat, movingPlayer, state.elapsed, dt)
-    // One independent 1/10 draw per visible boat at dusk, never per animation frame.
-    if (chiefHours(state.minutes) && coupleVisible(boat, state.cameraY) && !boat.chiefChecked) {
-      boat.chiefChecked = true
-      if (random() < .1) boat.chiefSurname = CHIEF_SURNAMES[Math.max(0, Math.min(CHIEF_SURNAMES.length - 1, Math.floor(random() * CHIEF_SURNAMES.length)))]
+    // Later evenings redraw once per visible boat per night, never every frame.
+    const night = Math.floor(state.minutes / 1440)
+    if (night > 0 && chiefHours(state.minutes) && coupleVisible(boat, state.cameraY)) {
+      if (boat.chiefNight !== undefined && boat.chiefNight !== night && state.chiefVisit?.boatId !== boat.id) {
+        boat.chiefChecked = false; boat.chiefSurname = undefined; boat.chiefGreeted = false
+      }
+      boat.chiefNight = night
+      if (!boat.chiefChecked) {
+        boat.chiefChecked = true
+        if (random() < .1) boat.chiefSurname = CHIEF_SURNAMES[Math.max(0, Math.min(CHIEF_SURNAMES.length - 1, Math.floor(random() * CHIEF_SURNAMES.length)))]
+      }
     }
     // Three hull samples approximate the long boat, rather than colliding with portrait pixels.
     let hit: { dx: number; dy: number; distance: number } | null = null
@@ -299,7 +325,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       const overlap = 59 - hit.distance
       boat.x += nx * (overlap + .5); boat.y += ny * (overlap + .5)
       state.speed *= .7
-      if (state.dialogue === null && !state.encounter && (!state.daily.chat || state.daily.chat.kind === 'random') && state.collisionCooldown === 0) {
+      if (canStartBoatSpeech(state) && state.collisionCooldown === 0) {
         const pick = (choices: string[]) => choices[Math.min(choices.length - 1, Math.max(0, Math.floor(random() * choices.length)))]
         state.encounter = { boatId: boat.id, complaint: boat.chiefSurname ? '啊！' : pick(COMPLAINTS), apology: boat.chiefSurname ? APOLOGIES[2] : pick(APOLOGIES), age: 0 }
         state.collisionCooldown = 9; state.collisions++; state.laughUntil = 0
@@ -328,9 +354,15 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
     }
   }
   if (!state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && chiefHours(state.minutes)) {
-    const boat = state.couples.filter(candidate => candidate.chiefSurname && !candidate.chiefGreeted && coupleVisible(candidate, state.cameraY))
+    const firstNight = state.minutes < 1440
+    const boat = state.couples.filter(candidate => coupleVisible(candidate, state.cameraY)
+      && (firstNight ? !state.firstChiefSeen : candidate.chiefSurname && !candidate.chiefGreeted))
       .sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))[0]
     if (boat) {
+      if (firstNight) {
+        boat.chiefSurname = CHIEF_SURNAMES[Math.max(0, Math.min(CHIEF_SURNAMES.length - 1, Math.floor(random() * CHIEF_SURNAMES.length)))]
+        boat.chiefChecked = true; boat.chiefNight = 0; state.firstChiefSeen = true
+      }
       boat.chiefGreeted = true
       state.chiefVisit = { boatId: boat.id, surname: boat.chiefSurname!, line: 0, age: 0, masked: false, done: false }
       state.laughUntil = 0

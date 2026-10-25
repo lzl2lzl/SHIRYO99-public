@@ -41,7 +41,7 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-person-ryo { left: 65.91%; }
 .rowing-person > svg { display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .rowing-person[data-action="push"] > svg { transform: translateX(-10px) rotate(-9deg); }
-.rowing-person[data-action="stroke"] > svg { transform: translateY(-3px); }
+.rowing-person[data-action="stroke"] > svg, .rowing-person[data-action="miss"] > svg { transform: translateY(-3px); }
 .rowing-person[data-action="strong"] > svg { transform: translateY(-6px) rotate(-5deg); }
 .rowing-person[data-action="reverse"] > svg { transform: translateY(3px) rotate(6deg); }
 .rowing-person:not(:focus-visible) { outline: none; }

@@ -222,14 +222,14 @@ export function RowingGame({ onExit }: GameScreenProps) {
           <g className="rowing-oar rowing-oar-left" data-active={state.shiroAction === 'stroke'} style={{ transform: `rotate(${state.shiroAction === 'stroke' && !reduced ? Math.sin((.7 - (state.shiroUntil - state.elapsed)) / .7 * Math.PI * 2) * 32 : -12}deg)` }}>
             <path d="M-22 3L-91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M-77 20L-105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/>
           </g>
-          <g className="rowing-oar rowing-oar-right" data-reverse={state.ryoAction === 'reverse'} style={{ transform: `rotate(${['stroke', 'strong', 'reverse'].includes(state.ryoAction) && !reduced ? Math.sin((.7 - (state.ryoUntil - state.elapsed)) / .7 * Math.PI * 2) * (state.ryoAction === 'reverse' ? 32 : state.ryoAction === 'strong' ? -44 : -32) : 12}deg)` }}>
+          <g className="rowing-oar rowing-oar-right" data-reverse={state.ryoAction === 'reverse'} style={{ transform: `rotate(${['stroke', 'strong', 'reverse', 'miss'].includes(state.ryoAction) && !reduced ? Math.sin((.7 - (state.ryoUntil - state.elapsed)) / .7 * Math.PI * 2) * (state.ryoAction === 'reverse' ? 32 : state.ryoAction === 'strong' ? -44 : -32) : 12}deg)` }}>
             <path d="M22 3L91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M77 20L105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/>
           </g>
         </svg>
         {!onShore && seats.map(({ who, depth }) => <button key={who} className={`rowing-person rowing-person-${who}`} style={{ zIndex: Math.round(depth + 60) }}
           data-action={who === 'shiro' ? state.shiroAction : state.ryoAction}
           aria-label={who === 'shiro' ? '让宇都木士郎划桨' : '让月云了划桨'} {...inputs(who)}>
-          <Portrait who={who} masked={who === 'ryo' && Boolean(visit?.masked)} active={who === 'shiro' ? state.shiroAction !== 'rest' : ['push', 'stroke', 'strong', 'reverse'].includes(state.ryoAction)} />
+          <Portrait who={who} masked={who === 'ryo' && Boolean(visit?.masked)} active={who === 'shiro' ? state.shiroAction !== 'rest' : ['push', 'stroke', 'strong', 'reverse', 'miss'].includes(state.ryoAction)} />
         </button>)}
         {!dialogue && !encounter && !chiefLine && !dailyLine && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
       </div>

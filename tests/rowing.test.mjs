@@ -166,16 +166,63 @@ test('invalid time never moves couples; recycled boats receive new motion withou
 })
 
 function chiefScene() {
-  const g = createRowing(); g.minutes = 20 * 60
+  const g = createRowing(); g.minutes = 44 * 60; g.eveningSeen = true; g.effort = true
   g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
   tickRowing(g, .01, () => .01)
   return g
 }
 
-test('19–22 draws once per visible boat at 1/10, never every frame or outside after-work hours', () => {
+test('first evening guarantees one nearby chief greeting even with an unlucky draw, then later nights are random', () => {
+  for (const draw of [0, .5, .999]) {
+    const g = createRowing(seeded(5)); g.minutes = 19 * 60
+    g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }, { id: 101, x: 300, y: 520, heading: Math.PI }]
+    tickRowing(g, .01, () => draw)
+    assert.equal(g.firstChiefSeen, true); assert.ok(g.chiefVisit)
+    assert.equal(g.couples.filter(b => b.chiefSurname).length, 1)
+    g.couples = [{ id: 102, x: 90, y: 200, heading: Math.PI }]
+    tickRowing(g, .01, () => 0); assert.equal(g.chiefVisit, null)
+    for (let i = 0; i < 100; i++) tickRowing(g, .1, () => 0)
+    assert.equal(g.chiefVisit, null, 'No second guaranteed chief or random first-night chain')
+    g.eveningSeen = true; g.minutes = 43 * 60
+    tickRowing(g, .01, () => .999); assert.equal(g.chiefVisit, null)
+    assert.equal(g.couples[0].chiefChecked, true)
+    g.minutes = 67 * 60
+    tickRowing(g, .01, () => .01); assert.ok(g.chiefVisit)
+    assert.equal(g.couples[0].chiefNight, 2)
+  }
+})
+
+test('guaranteed greeting waits for existing speech and a visible boat, without spawning or moving one', () => {
+  const g = createRowing(); g.minutes = 19 * 60
+  g.couples = [{ id: 100, x: 90, y: 900, heading: Math.PI }]
+  tickRowing(g, .01, () => .99); assert.equal(g.firstChiefSeen, false)
+  g.couples[0].y = 200
+  g.encounter = { boatId: 100, complaint: COMPLAINTS[0], apology: APOLOGIES[0], age: 0 }
+  tickRowing(g, .01, () => .99); assert.equal(g.firstChiefSeen, false)
+  g.encounter = null
+  tickRowing(g, .01, () => .99); assert.equal(g.firstChiefSeen, true)
+  assert.equal(g.couples.length, 1); assert.equal(g.chiefVisit.boatId, 100)
+  assert.ok(Math.abs(g.couples[0].y - 200) < 1)
+})
+
+test('collisions during a chief conversation still separate hulls but never interrupt or queue stale speech', () => {
+  const g = chiefScene(), speakingId = g.chiefVisit.boatId, age = g.chiefVisit.age
+  g.couples.push({ id: 101, x: g.x, y: g.y + 90, heading: Math.PI })
+  const beforeY = g.couples[1].y
+  tickRowing(g, .01, () => .9)
+  assert.equal(g.encounter, null); assert.equal(g.chiefVisit.boatId, speakingId)
+  assert.ok(g.chiefVisit.age > age); assert.ok(g.couples[1].y > beforeY)
+  assert.equal(g.collisionCooldown, 0)
+  g.chiefVisit.done = true
+  g.couples[1].y = g.y + 90; g.couples[1].x = g.x
+  tickRowing(g, .01, () => .9); assert.equal(g.encounter.boatId, 101)
+  assert.equal(g.encounter.complaint, COMPLAINTS[2])
+})
+
+test('later nights draw once per visible boat at 1/10, never every frame or outside after-work hours', () => {
   let selected = 0
   for (let i = 0; i < 1000; i++) {
-    const g = createRowing(); g.minutes = 20 * 60
+    const g = createRowing(); g.minutes = 44 * 60; g.eveningSeen = true
     g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
     let draws = 0
     tickRowing(g, .01, () => { draws++; return (i + .5) / 1000 })
@@ -197,7 +244,7 @@ test('Sato plus ten surnames are freshly selected and carried consistently throu
   assert.equal(CHIEF_SURNAMES.length, 11); assert.equal(new Set(CHIEF_SURNAMES).size, 11)
   for (let i = 0; i < CHIEF_SURNAMES.length; i++) {
     const g = createRowing(); g.minutes = 20 * 60; g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
-    const draws = [.01, (i + .5) / CHIEF_SURNAMES.length]
+    const draws = [(i + .5) / CHIEF_SURNAMES.length]
     tickRowing(g, .01, () => draws.shift())
     assert.equal(g.chiefVisit.surname, CHIEF_SURNAMES[i])
     assert.equal(chiefLines(g.chiefVisit.surname)[2].text, `啊，${CHIEF_SURNAMES[i]}课长，晚上好，您辛苦了。`)
@@ -317,14 +364,14 @@ test('19–22 ramps 0–50%; subsequent days drop to 30% at 06:00 and return to 
   for (const [hour, expected] of [[19, 0], [19.6, .1], [20.5, .25], [21.4, .4], [22, .5], [24, .5], [29.99, .5], [30, .3], [36, .3], [41.99, .3], [42, .5], [46, .5], [48, .5], [54, .3], [66, .5]]) {
     assert.ok(Math.abs(ryoForwardChance(hour * 60) - expected) < 1e-10)
     for (const effort of [false, true]) {
-      const counts = { stroke: 0, strong: 0, refuse: 0, push: 0, reverse: 0 }
+      const counts = { stroke: 0, strong: 0, refuse: 0, push: 0, reverse: 0, miss: 0 }
       for (let i = 0; i < 2000; i++) {
         const g = createRowing(); g.minutes = hour * 60; g.effort = effort
         counts[row(g, 'ryo', () => (i + .5) / 2000)]++
       }
       assert.equal(counts.stroke + counts.strong, Math.round(expected * 2000))
       assert.ok(counts.stroke + counts.strong <= 1000)
-      if (effort) { assert.equal(counts.refuse + counts.push, 0); assert.equal(counts.reverse, 2000 - Math.round(expected * 2000)) }
+      if (effort) { assert.equal(counts.refuse + counts.push, 0); assert.equal(counts.reverse, 300); assert.equal(counts.miss, 1700 - Math.round(expected * 2000)) }
       else { assert.equal(counts.refuse, counts.push); assert.equal(counts.reverse, 0) }
     }
   }
@@ -362,21 +409,22 @@ test('evening lines expire automatically while time, movement and both rowers co
   assert.equal(g.dialogue, 0); assert.ok(g.minutes > startTime); assert.ok(g.y > startY)
   assert.equal(g.effort, false)
   wait(g, .3); assert.equal(g.dialogue, 1); assert.equal(g.effort, true)
-  assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(row(g, 'ryo', () => .9), 'reverse')
+  assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(row(g, 'ryo', () => .6), 'reverse')
   wait(g, 3.2); assert.equal(g.dialogue, null); assert.equal(g.effort, true)
   assert.ok(g.minutes > 1338); assert.ok(g.cameraY > 0)
 })
 
 test('evening effort always rows, reverse strokes worsen Shiro-side spinning, never refuses or pushes', () => {
-  for (const roll of [0, .2, .75, .9]) {
+  for (const roll of [0, .2, .45, .6, .75, .9]) {
     const g = createRowing(); g.effort = true; g.minutes = 22 * 60
     row(g, 'shiro'); const oldSpin = g.spin
     const action = row(g, 'ryo', () => roll)
-    assert.ok(['stroke', 'strong', 'reverse'].includes(action))
+    assert.ok(['stroke', 'strong', 'reverse', 'miss'].includes(action))
     assert.equal(g.ryoStrokes, 1); assert.equal(g.shiroStrokes, 1)
     assert.equal(g.laughUntil, 0)
     if (action === 'reverse') { assert.ok(g.spin > oldSpin); assert.equal(g.speed, 0) }
     else if (action === 'stroke') assert.equal(g.spin, 0)
+    else if (action === 'miss') { assert.equal(g.spin, oldSpin); assert.equal(g.speed, 18) }
     else assert.ok(g.spin < 0)
   }
 })
