@@ -1,0 +1,236 @@
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type KeyboardEvent } from 'react'
+import type { GameDefinition, GameScreenProps } from '../../engine/types'
+import { advanceEvening, clockAt, createRowing, EVENING_LINES, periodAt, row, tickRowing, type Rower } from './model'
+import { bankPath, bankX, riverDetails } from './scenery'
+import './rowing.css'
+
+
+const ASSETS = `${import.meta.env.BASE_URL}assets/characters/`
+const LABELS = { rest: '', stroke: '划桨', strong: '突然使劲', refuse: '不动', push: '推士郎', reverse: '划反了' }
+const PERIODS = { morning: '早上', noon: '午后', sunset: '夕阳', night: '夜晚' }
+
+function Portrait({ who, active }: { who: Rower; active: boolean }) {
+  const source = who === 'shiro' ? `shiro/white-${active ? 'a' : 'b'}.png` : `ryo/${active ? 'fishing-no-grapes' : 'no-crown-a'}.png`
+  const frame = who === 'shiro' ? '390 88 560 810' : active ? '467 190 566 644' : '96 32 162 178'
+  const width = who === 'shiro' ? 1280 : active ? 1448 : 320
+  const height = who === 'shiro' ? 960 : active ? 1086 : 240
+  return <svg viewBox={frame} width="88" height="108" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+    <image href={ASSETS + source} width={width} height={height} />
+  </svg>
+}
+
+export function RowingGame({ onExit }: GameScreenProps) {
+  const game = useRef(createRowing())
+  const [, repaint] = useState(0)
+  const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const [hidden, setHidden] = useState(document.hidden)
+  const [size, setSize] = useState({ width: 390, height: 844 })
+  const scene = useRef<HTMLElement>(null)
+  const dialogueButton = useRef<HTMLButtonElement>(null)
+  const lastInput = useRef<HTMLButtonElement | null>(null)
+  const held = useRef(new Map<string, Rower>())
+  const state = game.current
+  const period = periodAt(state.minutes)
+  const dialogue = state.dialogue === null ? null : EVENING_LINES[state.dialogue]
+
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }))
+    if (scene.current) observer.observe(scene.current)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const query = matchMedia('(prefers-reduced-motion: reduce)')
+    const change = () => setReduced(query.matches)
+    query.addEventListener('change', change)
+    for (const file of ['shiro/white-a.png', 'shiro/white-b.png', 'ryo/no-crown-a.png', 'ryo/fishing-no-grapes.png']) {
+      const img = new Image(); img.src = ASSETS + file
+    }
+    return () => query.removeEventListener('change', change)
+  }, [])
+
+  useEffect(() => {
+    let frame = 0, previous = 0
+    const loop = (now: number) => {
+      const blocked = document.hidden || Boolean(scene.current?.closest('[inert]'))
+      if (blocked || game.current.dialogue !== null) held.current.clear()
+      if (!blocked && previous) {
+        tickRowing(game.current, (now - previous) / 1000)
+        for (const who of new Set(held.current.values())) row(game.current, who)
+        repaint(n => n + 1)
+      }
+      previous = blocked ? 0 : now
+      frame = requestAnimationFrame(loop)
+    }
+    const release = () => { held.current.clear(); repaint(n => n + 1) }
+    const visibility = () => { previous = 0; release(); setHidden(document.hidden) }
+    const keyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.repeat || document.hidden || scene.current?.closest('[inert]')) return
+      const who = event.code === 'KeyA' ? 'shiro' : event.code === 'KeyL' ? 'ryo' : null
+      if (!who || game.current.dialogue !== null) return
+      event.preventDefault(); held.current.set(`key:${event.code}`, who); row(game.current, who)
+    }
+    const keyUp = (event: globalThis.KeyboardEvent) => held.current.delete(`key:${event.code}`)
+    document.addEventListener('visibilitychange', visibility)
+    window.addEventListener('blur', release)
+    window.addEventListener('keydown', keyDown)
+    window.addEventListener('keyup', keyUp)
+    frame = requestAnimationFrame(loop)
+    return () => {
+      cancelAnimationFrame(frame); held.current.clear()
+      document.removeEventListener('visibilitychange', visibility); window.removeEventListener('blur', release)
+      window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (dialogue) dialogueButton.current?.focus({ preventScroll: true })
+    else lastInput.current?.focus({ preventScroll: true })
+  }, [Boolean(dialogue)])
+
+  const paddle = (who: Rower, button: HTMLButtonElement) => {
+    lastInput.current = button
+    row(game.current, who)
+    repaint(n => n + 1)
+  }
+  const inputs = (who: Rower) => ({
+    onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0 || game.current.dialogue !== null) return
+      event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
+      held.current.set(`pointer:${event.pointerId}`, who); paddle(who, event.currentTarget)
+    },
+    onPointerUp: (event: PointerEvent<HTMLButtonElement>) => held.current.delete(`pointer:${event.pointerId}`),
+    onPointerCancel: (event: PointerEvent<HTMLButtonElement>) => held.current.delete(`pointer:${event.pointerId}`),
+    onLostPointerCapture: (event: PointerEvent<HTMLButtonElement>) => held.current.delete(`pointer:${event.pointerId}`),
+    onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => {
+      if (event.code !== 'Space' && event.code !== 'Enter') return
+      event.preventDefault(); if (event.repeat) return
+      held.current.set(`key:${event.code}`, who); paddle(who, event.currentTarget)
+    },
+    onKeyUp: (event: KeyboardEvent<HTMLButtonElement>) => {
+      if (event.code === 'Space' || event.code === 'Enter') { event.preventDefault(); held.current.delete(`key:${event.code}`) }
+    },
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => { if (event.detail === 0) paddle(who, event.currentTarget) },
+  })
+  const heading = state.heading * 180 / Math.PI
+  const theta = reduced ? Math.round(heading / 30) * 30 : heading
+  const radians = theta * Math.PI / 180
+  const boatScale = Math.max(180, Math.min(230, size.width * .48)) / 220
+  const seats = (['shiro', 'ryo'] as const).map(who => {
+    const x = who === 'shiro' ? -35 : 35
+    const depth = Math.sin(radians) * x + Math.cos(radians) * 20
+    return { who, depth,
+      x: state.x / 390 * size.width + (Math.cos(radians) * x - Math.sin(radians) * 20) * boatScale,
+      y: 50 + (state.y - state.cameraY) / 700 * (size.height - 140) + depth * boatScale,
+    }
+  })
+  const speakerSeat = seats[dialogue?.who === 'ryo' ? 1 : 0]
+  const bubbleWidth = Math.min(300, size.width * .64)
+  const bubbleLeft = Math.max(16, Math.min(size.width - bubbleWidth - 16, speakerSeat.x - bubbleWidth / 2))
+  const headTop = Math.min(...seats.map(seat => seat.y)) - 108 * boatScale
+  const otherSeat = seats[dialogue?.who === 'ryo' ? 0 : 1]
+  const estimatedBubbleHeight = 62 + Math.ceil((dialogue?.text.length ?? 0) * 16 / (bubbleWidth - 40)) * 26
+  const roomBelow = Math.max(...seats.map(seat => seat.y)) + 24 + estimatedBubbleHeight < size.height - 126
+  const bubbleBelow = roomBelow && (headTop < 210 || speakerSeat.y > otherSeat.y + 16)
+  const bubbleY = bubbleBelow ? Math.max(...seats.map(seat => seat.y)) + 24 : headTop - 18
+  const active = state.shiroAction !== 'rest' || state.ryoAction !== 'rest'
+  const details = riverDetails(state.cameraY)
+  const encounter = state.encounter
+  const complaining = Boolean(encounter && encounter.age < 2.6)
+  const couple = state.couples.find(boat => boat.id === encounter?.boatId)
+  const response = encounter ? complaining ? encounter.complaint : encounter.apology : ''
+  const encounterAnchor = complaining && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 140) - 36 } : { x: seats[0].x, y: seats[0].y - 108 * boatScale }
+  const responseWidth = Math.min(270, size.width * .68, Math.max(112, response.length * 16 + 40))
+  const responseLeft = Math.max(16, Math.min(size.width - responseWidth - 16, encounterAnchor.x - responseWidth / 2))
+  const responseBottom = Math.min(size.height - 155, Math.max(225, encounterAnchor.y - 20))
+  const responseHeight = 62 + Math.ceil(response.length * 16 / (responseWidth - 40)) * 26
+  const responseBelowY = encounterAnchor.y + 92
+  const responseBelow = complaining && responseBelowY + responseHeight < size.height - 126 && encounterAnchor.y > Math.min(...seats.map(seat => seat.y)) - 30
+
+  return <main ref={scene} className="rowing-screen" data-period={period} data-effort={state.effort} data-hidden={hidden}
+    data-spinning={Math.abs(state.spin) > 1.05} data-heading={state.heading.toFixed(2)} data-taps={state.taps}
+    data-camera={state.cameraY.toFixed(1)} data-collisions={state.collisions} data-shiro-strokes={state.shiroStrokes} data-ryo-strokes={state.ryoStrokes}
+    style={{ '--row-angle': `${theta}deg` } as CSSProperties}>
+    <header className="rowing-header">
+      <button className="rowing-back" onClick={onExit} aria-label="返回游戏大厅">← 返回</button>
+      <div className="rowing-clock" aria-label={`第${Math.floor(state.minutes / 1440) + 1}天 ${clockAt(state.minutes)}`}>
+        <span>第 {Math.floor(state.minutes / 1440) + 1} 天 · {PERIODS[period]}</span>
+        <time>{clockAt(state.minutes)}</time>
+      </div>
+    </header>
+    <div className="rowing-celestial" aria-hidden="true"><span /></div>
+    <svg className="rowing-water" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="rowing-water-light" x2=".9" y2="1"><stop stopColor="white" stopOpacity=".14"/><stop offset="1" stopColor="white" stopOpacity="0"/></linearGradient></defs>
+      {[false, true].map(right => <g key={String(right)}>
+        <path className="rowing-bank" d={bankPath(state.cameraY, right)} />
+        <path className="rowing-bank-inner" d={bankPath(state.cameraY, right, 12)} />
+      </g>)}
+      <path d="M36 -180L275 880H350L110 -180Z" fill="url(#rowing-water-light)"/>
+      {details.map(p => <g key={p.id}>
+        <path className="rowing-waterline" d={`M${p.x} ${p.y}q12 -5 26 0t22 0`} />
+        <g className="rowing-reeds" transform={`translate(${bankX(p.y + state.cameraY, p.right) + (p.right ? 9 : -9)} ${p.y + 30})`}>
+          <path d="M0 0Q-9 -11 -7 -23M0 0Q1 -16 6 -28M0 0Q10 -6 13 -17" />
+          {p.id % 3 === 0 ? <><circle cx="-7" cy="-24" r="3"/><circle cx="6" cy="-28" r="3"/></> : null}
+        </g>
+      </g>)}
+    </svg>
+    <svg className="rowing-stage" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true">
+      {state.couples.map(boat => {
+        return <g key={boat.id} className="rowing-couple" data-boat={boat.id} transform={`translate(${boat.x} ${boat.y - state.cameraY}) rotate(${boat.heading * 180 / Math.PI})`}>
+          <ellipse rx="23" ry="39"/><ellipse className="rowing-couple-inner" rx="17" ry="31"/>
+          <path className="rowing-couple-paddles" d="M-35 -5L34 8"/>
+          <path className="rowing-couple-heart" transform={`rotate(${-boat.heading * 180 / Math.PI})`} d="M0 11C-4 7 -16 0 -13 -8C-10 -16 -2 -12 0 -7C2 -12 10 -16 13 -8C16 0 4 7 0 11Z"/>
+        </g>
+      })}
+      {state.trail.map((p, i) => <ellipse key={i} cx={p.x} cy={p.y - state.cameraY} rx={5 + p.age * 6} ry={2 + p.age * 2} className="rowing-trail" opacity={Math.max(0, (1 - p.age / 3) * .18)} />)}
+    </svg>
+    <div className="rowing-boat-layer">
+      <div className="rowing-boat" style={{ left: `${state.x / 390 * 100}%`, top: `${(state.y - state.cameraY) / 700 * 100}%` }}>
+        <svg className="rowing-hull" viewBox="-110 -125 220 250" aria-hidden="true">
+          <ellipse cy="10" rx="71" ry="109" fill="#143e4d" opacity=".12"/>
+          <path d="M0 -111C73 -77 80 17 56 83Q0 112 -56 83C-80 17 -73 -77 0 -111" fill="#9c7961"/>
+          <path d="M0 -103C64 -72 70 14 49 77Q0 99 -49 77C-70 14 -64 -72 0 -103" fill="#dfc6a0"/>
+          <path d="M0 -87C51 -58 59 10 41 64Q0 84 -41 64C-59 10 -51 -58 0 -87" fill="#ae8f73"/>
+          <path d="M0 -72V70M-27 -42V63M27 -42V63" stroke="#c8ab88" strokeWidth="2"/>
+          <path d="M-55 -13H55M-51 46H51" stroke="#e6cfa9" strokeWidth="12"/>
+          <g className="rowing-oar rowing-oar-left" data-active={state.shiroAction === 'stroke'} style={{ transform: `rotate(${state.shiroAction === 'stroke' && !reduced ? Math.sin((.7 - (state.shiroUntil - state.elapsed)) / .7 * Math.PI * 2) * 32 : -12}deg)` }}>
+            <path d="M-22 3L-91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M-77 20L-105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/>
+          </g>
+          <g className="rowing-oar rowing-oar-right" data-reverse={state.ryoAction === 'reverse'} style={{ transform: `rotate(${['stroke', 'strong', 'reverse'].includes(state.ryoAction) && !reduced ? Math.sin((.7 - (state.ryoUntil - state.elapsed)) / .7 * Math.PI * 2) * (state.ryoAction === 'reverse' ? 32 : state.ryoAction === 'strong' ? -44 : -32) : 12}deg)` }}>
+            <path d="M22 3L91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M77 20L105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/>
+          </g>
+        </svg>
+        {seats.map(({ who, depth }) => <button key={who} className={`rowing-person rowing-person-${who}`} disabled={Boolean(dialogue)} style={{ zIndex: Math.round(depth + 60) }}
+          data-action={who === 'shiro' ? state.shiroAction : state.ryoAction}
+          aria-label={who === 'shiro' ? '让宇都木士郎划桨' : '让月云了划桨'} {...inputs(who)}>
+          <Portrait who={who} active={who === 'shiro' ? state.shiroAction !== 'rest' : ['push', 'stroke', 'strong', 'reverse'].includes(state.ryoAction)} />
+        </button>)}
+        {!dialogue && !encounter && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
+      </div>
+    </div>
+    {dialogue ? <button ref={dialogueButton} className="rowing-dialogue" data-below={bubbleBelow}
+      style={{ left: bubbleLeft, top: bubbleY, width: bubbleWidth, '--row-tail-x': `${Math.max(18, Math.min(bubbleWidth - 18, speakerSeat.x - bubbleLeft))}px` } as CSSProperties}
+      onClick={() => { advanceEvening(state); repaint(n => n + 1) }} aria-label={`${dialogue.speaker}：${dialogue.text}，确认下一句`}>
+      <span>{dialogue.speaker}</span><p>{dialogue.text}</p><i aria-hidden="true">▾</i>
+    </button> : null}
+    {!dialogue && encounter ? <div className="rowing-dialogue rowing-response" role="status" data-speaker={complaining ? 'couple' : 'shiro'} data-below={responseBelow}
+      style={{ left: responseLeft, top: responseBelow ? responseBelowY : responseBottom, width: responseWidth, '--row-tail-x': `${Math.max(16, Math.min(responseWidth - 16, encounterAnchor.x - responseLeft))}px` } as CSSProperties}>
+      <span>{complaining ? '♥' : '宇都木士郎'}</span><p>{response}</p>
+    </div> : null}
+    <footer className="rowing-controls">
+      <p className="rowing-instruction" style={{ visibility: state.taps < 4 && state.elapsed < 15 ? 'visible' : 'hidden' }}>可以双指一起划，也可以按住两边。</p>
+      <div className="rowing-paddles">
+        {(['shiro', 'ryo'] as const).map(who => <button key={who} disabled={Boolean(dialogue)} {...inputs(who)} className={`rowing-paddle rowing-paddle-${who}`} data-held={[...held.current.values()].includes(who)}>
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M23 4L10 22M10 18l-5 7q-1 2 1 3t3 0l5-7"/></svg>
+          <span>{who === 'shiro' ? '宇都木士郎' : '月云了'}<small aria-live="polite">{LABELS[who === 'shiro' ? state.shiroAction : state.ryoAction] || (who === 'ryo' && state.effort ? '努力中' : '划桨')}</small></span>
+        </button>)}
+      </div>
+      <span className="rowing-turn-hint" aria-hidden="true" style={{ opacity: Math.abs(state.spin) > 1.05 && active ? 1 : 0 }}>↻</span>
+    </footer>
+  </main>
+}
+
+export const rowingGame: GameDefinition = {
+  id: 'hate-rowing', title: '我讨厌划船', kicker: '', description: '两个人，一条总在打转的小船。',
+  kind: 'mechanic', accent: '#a68bc6', estimatedTime: '一直划', component: RowingGame,
+}

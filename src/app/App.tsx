@@ -6,6 +6,10 @@ import './lobby.css'
 // One quiet game directory, with gray/purple lettering and a tiny love-note interaction.
 // No reference-site panel, theme controls or character art; game routes stay independent.
 const BRAND_LOGO = `${import.meta.env.BASE_URL}assets/brand/shiryo99-love.svg`
+const readGameId = () => {
+  const id = location.hash.replace('#/game/', '') || null
+  return id === 'endless-rowing' ? 'hate-rowing' : id
+}
 
 function LoveNote() {
   const [burst, setBurst] = useState(0)
@@ -62,7 +66,7 @@ function Lobby({ onEnter }: { onEnter: (event: MouseEvent<HTMLAnchorElement>, id
 }
 
 export function App() {
-  const [activeId, setActiveId] = useState<string | null>(() => location.hash.replace('#/game/', '') || null)
+  const [activeId, setActiveId] = useState<string | null>(readGameId)
   const [entry, setEntry] = useState<HeartEntry | null>(null)
   const entryLocked = useRef(false)
   const gameViewport = useRef<HTMLDivElement>(null)
@@ -70,11 +74,13 @@ export function App() {
 
   useEffect(() => {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', activeGame ? '#11110f' : '#f4f2f7')
+    document.title = activeGame ? `${activeGame.title} · SHIRYO99` : 'SHIRYO99'
+    if (location.hash === '#/game/endless-rowing') history.replaceState(null, '', `${location.pathname}${location.search}#/game/hate-rowing`)
   }, [activeGame])
 
   useEffect(() => {
     const onHashChange = () => {
-      const id = location.hash.replace('#/game/', '') || null
+      const id = readGameId()
       setActiveId(id)
       setEntry(current => {
         if (current && current.id !== id) { entryLocked.current = false; return null }
