@@ -10,7 +10,7 @@ const LABELS = { rest: '', stroke: '划桨', strong: '突然使劲', refuse: '�
 const PERIODS = { morning: '早上', noon: '午后', sunset: '夕阳', night: '夜晚' }
 
 function Portrait({ who, active }: { who: Rower; active: boolean }) {
-  const source = who === 'shiro' ? `shiro/white-${active ? 'a' : 'b'}.png` : `ryo/${active ? 'fishing-no-grapes' : 'no-crown-a'}.png`
+  const source = who === 'shiro' ? `shiro/white-${active ? 'b' : 'a'}.png` : `ryo/${active ? 'fishing-no-grapes' : 'no-crown-a'}.png`
   const frame = who === 'shiro' ? '390 88 560 810' : active ? '467 190 566 644' : '96 32 162 178'
   const width = who === 'shiro' ? 1280 : active ? 1448 : 320
   const height = who === 'shiro' ? 960 : active ? 1086 : 240
