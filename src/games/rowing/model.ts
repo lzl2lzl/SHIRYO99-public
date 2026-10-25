@@ -8,8 +8,26 @@ export const STROKE_COOLDOWN = .55
 export const COUPLE_COUNT = 8
 export const COMPLAINTS = ['啊！', '小心一点，没素质的家伙！', '你撞到我女朋友了！！']
 export const APOLOGIES = ['不好意思。', '真的非常不好意思。', '非常抱歉，我们会注意的。']
-export interface CoupleBoat { id: number; x: number; y: number; heading: number }
+export const CHIEF_SURNAMES = ['佐藤', '铃木', '高桥', '田中', '渡边', '伊藤', '山本', '中村', '小林', '加藤', '吉田']
+export interface CoupleBoat { id: number; x: number; y: number; heading: number; chiefChecked?: boolean; chiefSurname?: string; chiefGreeted?: boolean }
 export interface Encounter { boatId: number; complaint: string; apology: string; age: number }
+export interface ChiefVisit { boatId: number; surname: string; line: number; age: number; masked: boolean; done: boolean }
+export function chiefLines(surname: string) {
+  return [
+    { who: 'couple', speaker: surname, text: '咦，这不是宇都木吗？' },
+    { who: 'ryo', speaker: '月云了', text: '！' },
+    { who: 'shiro', speaker: '宇都木士郎', text: `啊，${surname}课长，晚上好，您辛苦了。` },
+    { who: 'couple', speaker: surname, text: '晚上好，下班过来的？' },
+    { who: 'shiro', speaker: '宇都木士郎', text: '是的，来稍微换换心情。' },
+    { who: 'couple', speaker: surname, text: '这样啊，偶尔这样也挺好的。' },
+    { who: 'shiro', speaker: '宇都木士郎', text: '是的，这里很安静。' },
+    { who: 'couple', speaker: surname, text: '那明天见。' },
+    { who: 'shiro', speaker: '宇都木士郎', text: '好的，那我先告辞了。' },
+  ] as const
+}
+export function coupleVisible(boat: CoupleBoat, cameraY: number) {
+  return boat.y + 40 >= cameraY && boat.y - 40 <= cameraY + 700 && boat.x + 40 >= 0 && boat.x - 40 <= 390
+}
 export function riverCenter(y: number) { return 195 + Math.sin(y / 420) * 22 + Math.sin(y / 190) * 12 }
 export const EVENING_LINES = [
   { speaker: '宇都木士郎', who: 'shiro' as const, text: '该回家了，明天还有工作。' },
@@ -46,6 +64,7 @@ export interface RowingState {
   couples: CoupleBoat[]
   nextCoupleId: number
   encounter: Encounter | null
+  chiefVisit: ChiefVisit | null
   collisionCooldown: number
   collisions: number
 }
@@ -59,7 +78,7 @@ export function createRowing(): RowingState {
     taps: 0, distance: 0, turnTravel: 0, trail: [], trailTimer: 0,
     cameraY: 0, couples: [-160, 0, 170, 540, 700, 850, 1000, 1150].map((y, id) => ({
       id, x: riverCenter(y) + Math.sin(id * 2.3) * 78, y, heading: Math.PI + Math.sin(id) * .25,
-    })), nextCoupleId: COUPLE_COUNT, encounter: null, collisionCooldown: 0, collisions: 0,
+    })), nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, collisionCooldown: 0, collisions: 0,
   }
 }
 
@@ -160,6 +179,11 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   for (const boat of state.couples) {
     boat.y += (3 + boat.id % 3) * dt
     boat.x += (riverCenter(boat.y) + Math.sin(boat.id * 2.3 + boat.y / 220) * 78 - boat.x) * dt * .08
+    // One independent 1/10 draw per visible boat at dusk, never per animation frame.
+    if (periodAt(state.minutes) === 'sunset' && coupleVisible(boat, state.cameraY) && !boat.chiefChecked) {
+      boat.chiefChecked = true
+      if (random() < .1) boat.chiefSurname = CHIEF_SURNAMES[Math.max(0, Math.min(CHIEF_SURNAMES.length - 1, Math.floor(random() * CHIEF_SURNAMES.length)))]
+    }
     // Three hull samples approximate the long boat, rather than colliding with portrait pixels.
     let hit: { dx: number; dy: number; distance: number } | null = null
     for (const offset of [-48, 0, 48]) {
@@ -176,10 +200,36 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       state.speed *= .7
       if (state.dialogue === null && !state.encounter && state.collisionCooldown === 0) {
         const pick = (choices: string[]) => choices[Math.min(choices.length - 1, Math.max(0, Math.floor(random() * choices.length)))]
-        state.encounter = { boatId: boat.id, complaint: pick(COMPLAINTS), apology: pick(APOLOGIES), age: 0 }
+        state.encounter = { boatId: boat.id, complaint: boat.chiefSurname ? '啊！' : pick(COMPLAINTS), apology: boat.chiefSurname ? APOLOGIES[2] : pick(APOLOGIES), age: 0 }
         state.collisionCooldown = 9; state.collisions++; state.laughUntil = 0
         state.spin = Math.max(-2.5, Math.min(2.5, state.spin + nx * .22))
       }
+    }
+  }
+  const speakingBoat = state.couples.find(candidate => candidate.id === state.encounter?.boatId)
+  if (speakingBoat?.chiefSurname && !coupleVisible(speakingBoat, state.cameraY)) state.encounter = null
+  const visit = state.chiefVisit
+  if (visit) {
+    const boat = state.couples.find(candidate => candidate.id === visit.boatId)
+    if (!boat || !coupleVisible(boat, state.cameraY)) {
+      state.chiefVisit = null
+      if (state.encounter?.boatId === visit.boatId) state.encounter = null
+    } else if (!visit.done && state.dialogue === null && !state.encounter) {
+      visit.age += dt
+      if (visit.age >= (visit.line === 1 ? 1.2 : 3.6)) {
+        visit.age = 0; visit.line++
+        if (visit.line >= 2) visit.masked = true
+        if (visit.line >= chiefLines(visit.surname).length) visit.done = true
+      }
+    }
+  }
+  if (!state.chiefVisit && state.dialogue === null && !state.encounter && periodAt(state.minutes) === 'sunset') {
+    const boat = state.couples.filter(candidate => candidate.chiefSurname && !candidate.chiefGreeted && coupleVisible(candidate, state.cameraY))
+      .sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))[0]
+    if (boat) {
+      boat.chiefGreeted = true
+      state.chiefVisit = { boatId: boat.id, surname: boat.chiefSurname!, line: 0, age: 0, masked: false, done: false }
+      state.laughUntil = 0
     }
   }
   // Recycle only well outside the viewport, and keep a speaking boat alive until its exchange ends.

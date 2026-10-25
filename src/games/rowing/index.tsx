@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type KeyboardEvent } from 'react'
 import type { GameDefinition, GameScreenProps } from '../../engine/types'
-import { clockAt, createRowing, EVENING_LINES, periodAt, row, tickRowing, type Rower } from './model'
+import { chiefLines, clockAt, createRowing, EVENING_LINES, periodAt, row, tickRowing, type Rower } from './model'
 import { bankPath, bankX, riverDetails } from './scenery'
 import { placeResponse, rowingBounds } from './bubble-layout'
 import './rowing.css'
@@ -10,13 +10,17 @@ const ASSETS = `${import.meta.env.BASE_URL}assets/characters/`
 const LABELS = { rest: '', stroke: '划桨', strong: '突然使劲', refuse: '不动', push: '推士郎', reverse: '划反了' }
 const PERIODS = { morning: '早上', noon: '午后', sunset: '夕阳', night: '夜晚' }
 
-function Portrait({ who, active }: { who: Rower; active: boolean }) {
+const MOSAIC_COLORS = ['#a68bc6', '#b4a1c9', '#8f7aa9', '#c1b1d1', '#786783', '#ddd0cd', '#b3a8bd', '#9b8ba9']
+function Portrait({ who, active, masked = false }: { who: Rower; active: boolean; masked?: boolean }) {
   const source = who === 'shiro' ? `shiro/white-${active ? 'b' : 'a'}.png` : `ryo/${active ? 'fishing-no-grapes' : 'no-crown-a'}.png`
   const frame = who === 'shiro' ? '390 88 560 810' : active ? '467 190 566 644' : '96 32 162 178'
   const width = who === 'shiro' ? 1280 : active ? 1448 : 320
   const height = who === 'shiro' ? 960 : active ? 1086 : 240
   return <svg viewBox={frame} width="88" height="108" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
     <image href={ASSETS + source} width={width} height={height} />
+    {who === 'ryo' && masked ? <svg className="rowing-face-mosaic" x={active ? 502 : 111} y={active ? 488 : 104} width={active ? 396 : 100} height={active ? 154 : 45} viewBox="0 0 100 40" preserveAspectRatio="none" pointerEvents="none">
+      {Array.from({ length: 40 }, (_, i) => <rect key={i} x={i % 10 * 10} y={Math.floor(i / 10) * 10} width="10.1" height="10.1" fill={MOSAIC_COLORS[(i * 7 + Math.floor(i / 10) * 3) % MOSAIC_COLORS.length]} />)}
+    </svg> : null}
   </svg>
 }
 
@@ -131,11 +135,16 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const active = state.shiroAction !== 'rest' || state.ryoAction !== 'rest'
   const details = riverDetails(state.cameraY)
   const encounter = state.encounter
+  const visit = state.chiefVisit
+  const chiefLine = visit && !visit.done ? chiefLines(visit.surname)[visit.line] : null
   const complaining = Boolean(encounter && encounter.age < 2.6)
-  const couple = state.couples.find(boat => boat.id === encounter?.boatId)
-  const response = encounter ? complaining ? encounter.complaint : encounter.apology : ''
-  const encounterAnchor = complaining && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 140) - 36 } : { x: seats[0].x, y: seats[0].y - 108 * boatScale }
-  const responseWidth = Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44))
+  const couple = state.couples.find(boat => boat.id === (encounter?.boatId ?? visit?.boatId))
+  const response = encounter ? complaining ? encounter.complaint : encounter.apology : chiefLine?.text ?? ''
+  const responseWho = encounter ? complaining ? 'couple' : 'shiro' : chiefLine?.who
+  const responseSpeaker = encounter ? complaining ? '周围的情侣' : '宇都木士郎' : chiefLine?.speaker ?? ''
+  const responseSeat = seats[responseWho === 'ryo' ? 1 : 0]
+  const encounterAnchor = responseWho === 'couple' && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 140) - 36 } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
+  const responseWidth = Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44, responseSpeaker.length * 12 + 44))
   const responseHeight = measuredResponse.text === response && measuredResponse.width === responseWidth ? measuredResponse.height : 62 + Math.ceil(response.length * 16 / (responseWidth - 40)) * 26
   const protectedBoat = rowingBounds({ x: state.x / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 140) }, radians, boatScale, seats)
   const responsePosition = placeResponse(size, encounterAnchor, protectedBoat, responseWidth, responseHeight)
@@ -180,7 +189,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     </svg>
     <svg className="rowing-stage" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true">
       {state.couples.map(boat => {
-        return <g key={boat.id} className="rowing-couple" data-boat={boat.id} transform={`translate(${boat.x} ${boat.y - state.cameraY}) rotate(${boat.heading * 180 / Math.PI})`}>
+        return <g key={boat.id} className="rowing-couple" data-boat={boat.id} data-chief={boat.chiefSurname} transform={`translate(${boat.x} ${boat.y - state.cameraY}) rotate(${boat.heading * 180 / Math.PI})`}>
           <ellipse rx="23" ry="39"/><ellipse className="rowing-couple-inner" rx="17" ry="31"/>
           <path className="rowing-couple-paddles" d="M-35 -5L34 8"/>
           <path className="rowing-couple-heart" transform={`rotate(${-boat.heading * 180 / Math.PI})`} d="M0 11C-4 7 -16 0 -13 -8C-10 -16 -2 -12 0 -7C2 -12 10 -16 13 -8C16 0 4 7 0 11Z"/>
@@ -207,18 +216,18 @@ export function RowingGame({ onExit }: GameScreenProps) {
         {seats.map(({ who, depth }) => <button key={who} className={`rowing-person rowing-person-${who}`} style={{ zIndex: Math.round(depth + 60) }}
           data-action={who === 'shiro' ? state.shiroAction : state.ryoAction}
           aria-label={who === 'shiro' ? '让宇都木士郎划桨' : '让月云了划桨'} {...inputs(who)}>
-          <Portrait who={who} active={who === 'shiro' ? state.shiroAction !== 'rest' : ['push', 'stroke', 'strong', 'reverse'].includes(state.ryoAction)} />
+          <Portrait who={who} masked={who === 'ryo' && Boolean(visit?.masked)} active={who === 'shiro' ? state.shiroAction !== 'rest' : ['push', 'stroke', 'strong', 'reverse'].includes(state.ryoAction)} />
         </button>)}
-        {!dialogue && !encounter && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
+        {!dialogue && !encounter && !chiefLine && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
       </div>
     </div>
     {dialogue ? <div className="rowing-dialogue rowing-response rowing-evening-response" role="status" data-speaker={dialogue.who} data-below={bubbleBelow}
       style={{ left: bubbleLeft, top: bubbleY, width: bubbleWidth, '--row-tail-x': `${Math.max(18, Math.min(bubbleWidth - 18, speakerSeat.x - bubbleLeft))}px` } as CSSProperties}>
       <span>{dialogue.speaker}</span><p>{dialogue.text}</p>
     </div> : null}
-    {!dialogue && encounter ? <div ref={responseElement} className="rowing-dialogue rowing-response rowing-collision-response" role="status" data-speaker={complaining ? 'couple' : 'shiro'} data-below={responsePosition.below}
+    {!dialogue && response ? <div ref={responseElement} className={`rowing-dialogue rowing-response ${encounter ? 'rowing-collision-response' : 'rowing-chief-response'}`} role="status" data-speaker={responseWho} data-below={responsePosition.below}
       style={{ left: responsePosition.left, top: responsePosition.top, transform: 'none', width: responseWidth, '--row-tail-x': `${responsePosition.tailX}px` } as CSSProperties}>
-      <span>{complaining ? '♥' : '宇都木士郎'}</span><p>{response}</p>
+      <span>{responseSpeaker}</span><p>{response}</p>
     </div> : null}
     <footer className="rowing-controls">
       <p className="rowing-instruction" style={{ visibility: state.taps < 4 && state.elapsed < 15 ? 'visible' : 'hidden' }}>可以双指一起划，也可以按住两边。</p>

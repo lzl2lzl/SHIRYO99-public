@@ -40,11 +40,11 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-person { position: absolute; top: 58%; width: 40%; height: 43%; padding: 0; border: 0; background: none; appearance: none; box-shadow: none; pointer-events: auto; transform-origin: 50% 100%; transform: translate(-50%, -100%) rotate(calc(-1 * var(--row-angle))); }
 .rowing-person-shiro { left: 34.09%; }
 .rowing-person-ryo { left: 65.91%; }
-.rowing-person svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.rowing-person[data-action="push"] svg { transform: translateX(-10px) rotate(-9deg); }
-.rowing-person[data-action="stroke"] svg { transform: translateY(-3px); }
-.rowing-person[data-action="strong"] svg { transform: translateY(-6px) rotate(-5deg); }
-.rowing-person[data-action="reverse"] svg { transform: translateY(3px) rotate(6deg); }
+.rowing-person > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rowing-person[data-action="push"] > svg { transform: translateX(-10px) rotate(-9deg); }
+.rowing-person[data-action="stroke"] > svg { transform: translateY(-3px); }
+.rowing-person[data-action="strong"] > svg { transform: translateY(-6px) rotate(-5deg); }
+.rowing-person[data-action="reverse"] > svg { transform: translateY(3px) rotate(6deg); }
 .rowing-person:not(:focus-visible) { outline: none; }
 .rowing-person:disabled { cursor: default; }
 .rowing-laugh { position: absolute; right: -8%; top: 5%; padding: 10px 16px; border-radius: 14px 14px 14px 2px; background: #f4f0e9; color: #584c70; font-size: 15px; transform: rotate(calc(-1 * var(--row-angle))); }
@@ -70,4 +70,4 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-paddle:disabled { opacity: .5; cursor: default; }
 .rowing-turn-hint { position: absolute; left: calc(50% - 10px); bottom: 17px; font-size: 24px; pointer-events: none; transition: opacity 200ms; }
 .rowing-screen[data-hidden="true"] * { animation-play-state: paused !important; }
-@media (prefers-reduced-motion: reduce) { .rowing-person svg { transform: none !important; } .rowing-screen { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .rowing-person > svg { transform: none !important; } .rowing-screen { transition: none; } }

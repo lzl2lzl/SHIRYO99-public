@@ -1,10 +1,114 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance } from '../src/games/rowing/model.ts'
+import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance, CHIEF_SURNAMES, chiefLines, coupleVisible } from '../src/games/rowing/model.ts'
 import { overlaps, placeResponse, rowingBounds } from '../src/games/rowing/bubble-layout.ts'
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
+
+function chiefScene() {
+  const g = createRowing(); g.minutes = 16 * 60
+  g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
+  tickRowing(g, .01, () => .01)
+  return g
+}
+
+test('dusk draws once per visible boat at 1/10, never every frame or outside dusk', () => {
+  let selected = 0
+  for (let i = 0; i < 1000; i++) {
+    const g = createRowing(); g.minutes = 16 * 60
+    g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
+    let draws = 0
+    tickRowing(g, .01, () => { draws++; return (i + .5) / 1000 })
+    const initial = draws
+    for (let frame = 0; frame < 20; frame++) tickRowing(g, .01, () => { draws++; return 0 })
+    assert.equal(draws, initial)
+    assert.equal(initial, i < 100 ? 2 : 1)
+    if (g.couples[0].chiefSurname) selected++
+  }
+  assert.equal(selected, 100)
+  for (const minutes of [9 * 60, 15 * 60, 18 * 60, 23 * 60]) {
+    const g = createRowing(); g.minutes = minutes; g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
+    tickRowing(g, .01, () => { assert.fail('No chief draw outside dusk') })
+    assert.equal(g.chiefVisit, null)
+  }
+})
+
+test('Sato plus ten surnames are freshly selected and carried consistently through the script', () => {
+  assert.equal(CHIEF_SURNAMES.length, 11); assert.equal(new Set(CHIEF_SURNAMES).size, 11)
+  for (let i = 0; i < CHIEF_SURNAMES.length; i++) {
+    const g = createRowing(); g.minutes = 16 * 60; g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
+    const draws = [.01, (i + .5) / CHIEF_SURNAMES.length]
+    tickRowing(g, .01, () => draws.shift())
+    assert.equal(g.chiefVisit.surname, CHIEF_SURNAMES[i])
+    assert.equal(chiefLines(g.chiefVisit.surname)[2].text, `啊，${CHIEF_SURNAMES[i]}课长，晚上好，您辛苦了。`)
+    assert.equal(chiefLines(g.chiefVisit.surname)[0].speaker, CHIEF_SURNAMES[i])
+  }
+})
+
+test('chief lines auto advance in exact order; face stays clear through ! then stays masked after dialogue ends', () => {
+  const g = chiefScene()
+  assert.deepEqual(chiefLines('佐藤').map(line => line.text), [
+    '咦，这不是宇都木吗？', '！', '啊，佐藤课长，晚上好，您辛苦了。', '晚上好，下班过来的？',
+    '是的，来稍微换换心情。', '这样啊，偶尔这样也挺好的。', '是的，这里很安静。', '那明天见。', '好的，那我先告辞了。',
+  ])
+  for (let line = 0; line < 9; line++) {
+    assert.equal(g.chiefVisit.line, line); assert.equal(g.chiefVisit.masked, line >= 2)
+    const start = g.elapsed
+    while (g.chiefVisit.line === line && g.elapsed - start < 4) tickRowing(g, .05, () => .9)
+    assert.ok(g.elapsed > start)
+  }
+  assert.equal(g.chiefVisit.done, true); assert.equal(g.chiefVisit.masked, true)
+  wait(g, 1); assert.equal(g.chiefVisit.done, true)
+})
+
+test('chief visit never blocks either rower and pauses speech beneath collision/night lines', () => {
+  const g = chiefScene(), initialTime = g.minutes, initialY = g.y
+  row(g, 'shiro'); row(g, 'ryo', () => .01); wait(g, .6)
+  assert.equal(g.shiroStrokes, 1); assert.equal(g.ryoStrokes, 1); assert.ok(g.minutes > initialTime); assert.notEqual(g.y, initialY)
+  const age = g.chiefVisit.age
+  g.encounter = { boatId: 100, complaint: '啊！', apology: APOLOGIES[2], age: 0 }
+  wait(g, 1); assert.equal(g.chiefVisit.age, age)
+  g.encounter = null; g.dialogue = 0; g.dialogueAge = 0
+  wait(g, 1); assert.equal(g.chiefVisit.age, age)
+  g.dialogue = null; wait(g, .2); assert.ok(g.chiefVisit.age > age)
+})
+
+test('chief boat leaving any edge cancels remaining lines and mosaic, including completed visits', () => {
+  for (const line of [0, 1, 2, 9]) for (const direction of ['top', 'bottom', 'left', 'right']) {
+    const g = chiefScene(); Object.assign(g.chiefVisit, { line, masked: line >= 2, done: line === 9 })
+    const boat = g.couples[0]
+    if (direction === 'top') boat.y = g.cameraY - 60
+    if (direction === 'bottom') boat.y = g.cameraY + 760
+    if (direction === 'left') boat.x = -60
+    if (direction === 'right') boat.x = 450
+    tickRowing(g, .01, () => .99)
+    assert.equal(g.chiefVisit, null); assert.equal(coupleVisible(boat, g.cameraY), false)
+  }
+  const g = chiefScene(); g.couples[0].y = g.cameraY - 39
+  assert.equal(coupleVisible(g.couples[0], g.cameraY), true)
+  tickRowing(g, .01, () => .99); assert.ok(g.chiefVisit, 'Keep the visit while part of the boat is still visible')
+})
+
+test('chief collision always says ah and uses the most polite apology, even before greeting', () => {
+  for (const draw of [0, .5, .999]) {
+    const g = createRowing(); g.minutes = 16 * 60
+    g.couples = [{ id: 100, x: g.x, y: g.y + 90, heading: Math.PI, chiefChecked: true, chiefSurname: '田中' }]
+    tickRowing(g, .01, () => draw)
+    assert.equal(g.encounter.complaint, '啊！'); assert.equal(g.encounter.apology, '非常抱歉，我们会注意的。')
+    g.couples[0].y = g.cameraY - 60; tickRowing(g, .01, () => draw)
+    assert.equal(g.encounter, null); assert.equal(g.chiefVisit, null)
+  }
+})
+
+test('recycled boats get a fresh chief draw and no visit survives recycling or a new game', () => {
+  const g = chiefScene(); const oldId = g.couples[0].id
+  g.couples[0].y = -400; tickRowing(g, .01, () => .99)
+  assert.equal(g.chiefVisit, null); assert.notEqual(g.couples[0].id, oldId); assert.equal(g.couples[0].chiefChecked, undefined)
+  g.couples[0].y = g.cameraY + 200
+  const draws = [.01, .999]; tickRowing(g, .01, () => draws.shift())
+  assert.equal(g.chiefVisit.surname, '吉田'); assert.equal(createRowing().chiefVisit, null)
+})
 
 test('rowing starts at 09:00; idle time runs without inventing strokes', () => {
   const g = createRowing(); wait(g, 10)
@@ -187,7 +291,7 @@ test('collision bubbles and tails avoid the whole rotated boat and portraits at 
       const center = { x: x / 390 * width, y: 50 + 370 / 700 * (height - 140) }
       const seats = [-35, 35].map(sx => ({ x: center.x + (Math.cos(angle) * sx - Math.sin(angle) * 20) * scale, y: center.y + (Math.sin(angle) * sx + Math.cos(angle) * 20) * scale }))
       const bounds = rowingBounds(center, angle, scale, seats)
-      for (const text of [...COMPLAINTS, ...APOLOGIES]) {
+      for (const text of [...COMPLAINTS, ...APOLOGIES, ...chiefLines('佐藤').map(line => line.text)]) {
         const bubbleWidth = Math.min(300, width - 32, Math.max(112, text.length * 16 + 44))
         const bubbleHeight = 62 + Math.ceil(text.length * 16 / (bubbleWidth - 40)) * 26
         for (const anchor of [seats[0], { x: center.x, y: center.y - 100 }, { x: center.x, y: center.y + 100 }]) {
