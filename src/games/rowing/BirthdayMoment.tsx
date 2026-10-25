@@ -16,15 +16,13 @@ export function BirthdayMoment({ celebration, reduced }: { celebration: Celebrat
       const y=8+(i*37)%76+(reduced?0:Math.sin(p*Math.PI*2+i)*5+p*10)
       return <span key={i} className={`rowing-petal rowing-petal-${i%3}`} style={{left:`${x}%`,top:`${y}%`,opacity:reduced?.6:Math.sin(p*Math.PI)*.8,transform:`rotate(${reduced?i*27:i*43+p*260}deg) scale(${.7+(i%4)*.15})`}}><Petal/></span>
     })}
-    {hearts && <>
-      <div className="rowing-birthday-wash" style={{opacity:reduced?.08:.12*frame.core}}/>
+    {hearts &&
       <div className="rowing-birthday-emblem" style={{filter:reduced?'none':`drop-shadow(0 0 ${frame.glow*9}px #b493de88)`}}>
-        <span className="rowing-birthday-core" style={{opacity:frame.core,transform:`scale(${.65+frame.core*.35}) rotate(${reduced?0:frame.rotation}rad)`}}><Heart/><b>99</b></span>
         {frame.lights.map((light,i)=>{
           const angle=-Math.PI/2+i*Math.PI/4+(reduced?0:frame.rotation)
           return <span key={i} className={`rowing-birthday-orbit rowing-birthday-orbit-${i%2}`} style={{opacity:light,transform:`translate(${Math.cos(angle)*82}px,${Math.sin(angle)*82}px) rotate(${reduced?0:Math.sin(angle)*22}deg)`}}><Heart/></span>
         })}
       </div>
-    </>}
+    }
   </div>
 }
