@@ -83,6 +83,25 @@ test('rowing and clock continue during daily speech; invalid time and a fresh ga
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
 
+test('shore opening keeps an empty boat and frozen clock until both lines, boarding and the first paddle', () => {
+  const g = createRowing(() => .2, true), position = { x: g.x, y: g.y }
+  assert.equal(g.opening, 'ryo'); assert.equal(g.minutes, 1080)
+  for (const expected of ['shiro', 'boarding', 'guide']) {
+    const before = g.opening
+    for (let i = 0; i < 40 && g.opening === before; i++) {
+      assert.equal(row(g, 'shiro'), null); assert.equal(row(g, 'ryo'), null)
+      tickRowing(g, .1)
+    }
+    assert.equal(g.opening, expected)
+    assert.equal(g.minutes, 1080); assert.equal(g.taps, 0)
+    assert.deepEqual({ x: g.x, y: g.y }, position)
+  }
+  wait(g, 10); assert.equal(g.opening, 'guide'); assert.equal(g.minutes, 1080)
+  assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(g.opening, null)
+  tickRowing(g, .1); assert.ok(g.minutes > 1080); assert.equal(g.shiroStrokes, 1)
+  assert.equal(createRowing(() => .2, true).opening, 'ryo')
+})
+
 function seeded(seed) {
   return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296 }
 }
@@ -251,11 +270,11 @@ test('recycled boats get a fresh chief draw and no visit survives recycling or a
   assert.equal(g.chiefVisit.surname, '吉田'); assert.equal(createRowing().chiefVisit, null)
 })
 
-test('rowing starts at 19:00 in night scenery without an immediate go-home line', () => {
+test('rowing starts at 18:00 in night scenery without an immediate go-home line', () => {
   const g = createRowing()
-  assert.equal(clockAt(g.minutes), '19:00'); assert.equal(periodAt(g.minutes), 'night'); assert.equal(ryoForwardChance(g.minutes), 0)
+  assert.equal(clockAt(g.minutes), '18:00'); assert.equal(periodAt(g.minutes), 'night'); assert.equal(ryoForwardChance(g.minutes), 0)
   wait(g, 10)
-  assert.equal(clockAt(g.minutes), '19:30')
+  assert.equal(clockAt(g.minutes), '18:30')
   assert.equal(g.dialogue, null); assert.equal(g.effort, false)
   assert.equal(g.taps, 0); assert.equal(g.shiroStrokes, 0); assert.equal(g.ryoStrokes, 0)
   assert.equal(g.x, 195); assert.ok(Math.abs(g.y - 430) < .01); assert.ok(g.cameraY > 50)

@@ -25,8 +25,9 @@ function Portrait({ who, active, masked = false }: { who: Rower; active: boolean
 }
 
 export function RowingGame({ onExit }: GameScreenProps) {
-  const [initialGame] = useState(createRowing)
+  const [initialGame] = useState(() => createRowing(Math.random, true))
   const game = useRef(initialGame)
+  const dockOrigin = useRef(initialGame.y)
   const [, repaint] = useState(0)
   const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
   const [hidden, setHidden] = useState(document.hidden)
@@ -38,6 +39,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const state = game.current
   const period = periodAt(state.minutes)
   const dialogue = state.dialogue === null ? null : EVENING_LINES[state.dialogue]
+  const onShore = state.opening !== null && state.opening !== 'guide'
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }))
@@ -73,7 +75,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     const keyDown = (event: globalThis.KeyboardEvent) => {
       if (event.altKey || event.ctrlKey || event.metaKey || event.repeat || document.hidden || scene.current?.closest('[inert]')) return
       const who = event.code === 'KeyA' ? 'shiro' : event.code === 'KeyL' ? 'ryo' : null
-      if (!who) return
+      if (!who || (game.current.opening && game.current.opening !== 'guide')) return
       event.preventDefault(); held.current.set(`key:${event.code}`, who); row(game.current, who)
     }
     const keyUp = (event: globalThis.KeyboardEvent) => held.current.delete(`key:${event.code}`)
@@ -95,7 +97,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
   }
   const inputs = (who: Rower) => ({
     onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0) return
+      if (event.button !== 0 || (game.current.opening && game.current.opening !== 'guide')) return
       event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
       held.current.set(`pointer:${event.pointerId}`, who); paddle(who)
     },
@@ -124,6 +126,12 @@ export function RowingGame({ onExit }: GameScreenProps) {
       y: 50 + (state.y - state.cameraY) / 700 * (size.height - 140) + depth * boatScale,
     }
   })
+  const boardingProgress = state.opening === 'boarding' ? reduced ? 1 : Math.min(1, state.openingAge / 1.2) : 0
+  const boardingEase = boardingProgress * boardingProgress * (3 - 2 * boardingProgress)
+  const shoreSeats = seats.map(seat => ({ ...seat, x: seat.x - 35 * (1 - boardingEase), y: seat.y - 85 * (1 - boardingEase) }))
+  const dockY = 50 + (dockOrigin.current - state.cameraY) / 700 * (size.height - 140) - 20 * boatScale - 85
+  const openingSpeaker = shoreSeats[state.opening === 'ryo' ? 1 : 0]
+  const openingLeft = Math.max(16, Math.min(size.width - 236, openingSpeaker.x - 110))
   const speakerSeat = seats[dialogue?.who === 'ryo' ? 1 : 0]
   const bubbleWidth = Math.min(300, size.width * .64)
   const bubbleLeft = Math.max(16, Math.min(size.width - bubbleWidth - 16, speakerSeat.x - bubbleWidth / 2))
@@ -163,7 +171,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     return () => observer.disconnect()
   }, [response, responseWidth, Boolean(dialogue)])
 
-  return <main ref={scene} className="rowing-screen" data-period={period} data-effort={state.effort} data-hidden={hidden}
+  return <main ref={scene} className="rowing-screen" data-period={period} data-effort={state.effort} data-hidden={hidden} data-opening={state.opening ?? 'done'}
     data-spinning={Math.abs(state.spin) > 1.05} data-heading={state.heading.toFixed(2)} data-taps={state.taps}
     data-camera={state.cameraY.toFixed(1)} data-collisions={state.collisions} data-shiro-strokes={state.shiroStrokes} data-ryo-strokes={state.ryoStrokes}
     style={{ '--row-angle': `${theta}deg` } as CSSProperties}>
@@ -190,6 +198,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
         </g>
       </g>)}
     </svg>
+    <div className="rowing-dock" aria-hidden="true" style={{ top: dockY, width: size.width / 2 + 35 * boatScale + 18 }}><i/><i/><i/></div>
     <svg className="rowing-stage" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true">
       {state.couples.map(boat => {
         return <g key={boat.id} className="rowing-couple" data-boat={boat.id} data-chief={boat.chiefSurname} transform={`translate(${boat.x} ${boat.y - state.cameraY}) rotate(${boat.heading * 180 / Math.PI})`}>
@@ -216,7 +225,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
             <path d="M22 3L91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M77 20L105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/>
           </g>
         </svg>
-        {seats.map(({ who, depth }) => <button key={who} className={`rowing-person rowing-person-${who}`} style={{ zIndex: Math.round(depth + 60) }}
+        {!onShore && seats.map(({ who, depth }) => <button key={who} className={`rowing-person rowing-person-${who}`} style={{ zIndex: Math.round(depth + 60) }}
           data-action={who === 'shiro' ? state.shiroAction : state.ryoAction}
           aria-label={who === 'shiro' ? '让宇都木士郎划桨' : '让月云了划桨'} {...inputs(who)}>
           <Portrait who={who} masked={who === 'ryo' && Boolean(visit?.masked)} active={who === 'shiro' ? state.shiroAction !== 'rest' : ['push', 'stroke', 'strong', 'reverse'].includes(state.ryoAction)} />
@@ -224,6 +233,9 @@ export function RowingGame({ onExit }: GameScreenProps) {
         {!dialogue && !encounter && !chiefLine && !dailyLine && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
       </div>
     </div>
+    {onShore && shoreSeats.map(seat => <div key={seat.who} className="rowing-shore-person" data-who={seat.who} style={{ left: seat.x, top: seat.y, width: 88 * boatScale, height: 108 * boatScale }}><Portrait who={seat.who} active={false}/></div>)}
+    {state.opening === 'ryo' || state.opening === 'shiro' ? <div className="rowing-dialogue rowing-response rowing-opening-response" role="status" style={{ left: openingLeft, top: Math.min(...shoreSeats.map(s => s.y)) - 108 * boatScale - 16, width: 220, '--row-tail-x': `${openingSpeaker.x - openingLeft}px` } as CSSProperties}><span>{state.opening === 'ryo' ? '月云了' : '宇都木士郎'}</span><p>{state.opening === 'ryo' ? '好无聊，我要划船。' : 'ok'}</p></div> : null}
+    {state.opening === 'guide' ? <div className="rowing-opening-guide" role="status"><p>点击人物<br/>开始划船</p></div> : null}
     {dialogue ? <div className="rowing-dialogue rowing-response rowing-evening-response" role="status" data-speaker={dialogue.who} data-below={bubbleBelow}
       style={{ left: bubbleLeft, top: bubbleY, width: bubbleWidth, '--row-tail-x': `${Math.max(18, Math.min(bubbleWidth - 18, speakerSeat.x - bubbleLeft))}px` } as CSSProperties}>
       <span>{dialogue.speaker}</span><p>{dialogue.text}</p>
@@ -232,8 +244,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
       style={{ left: responsePosition.left, top: responsePosition.top, transform: 'none', width: responseWidth, '--row-tail-x': `${responsePosition.tailX}px` } as CSSProperties}>
       <span>{responseSpeaker}</span><p>{response}</p>
     </div> : null}
-    <footer className="rowing-controls">
-      <p className="rowing-instruction" style={{ visibility: state.taps < 4 && state.elapsed < 15 ? 'visible' : 'hidden' }}>可以双指一起划，也可以按住两边。</p>
+    <footer className="rowing-controls" hidden={onShore}>
       <div className="rowing-paddles">
         {(['shiro', 'ryo'] as const).map(who => <button key={who} {...inputs(who)} className={`rowing-paddle rowing-paddle-${who}`} data-action={who === 'shiro' ? state.shiroAction : state.ryoAction} data-held={[...held.current.values()].includes(who)}>
           <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M23 4L10 22M10 18l-5 7q-1 2 1 3t3 0l5-7"/></svg>

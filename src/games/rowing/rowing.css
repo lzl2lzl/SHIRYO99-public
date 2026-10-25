@@ -40,7 +40,7 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-person { position: absolute; top: 58%; width: 40%; height: 43%; padding: 0; border: 0; background: none; appearance: none; box-shadow: none; pointer-events: auto; transform-origin: 50% 100%; transform: translate(-50%, -100%) rotate(calc(-1 * var(--row-angle))); }
 .rowing-person-shiro { left: 34.09%; }
 .rowing-person-ryo { left: 65.91%; }
-.rowing-person > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rowing-person > svg { display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .rowing-person[data-action="push"] > svg { transform: translateX(-10px) rotate(-9deg); }
 .rowing-person[data-action="stroke"] > svg { transform: translateY(-3px); }
 .rowing-person[data-action="strong"] > svg { transform: translateY(-6px) rotate(-5deg); }
@@ -57,6 +57,15 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-dialogue i { display: block; text-align: right; font-style: normal; font-size: 12px; }
 .rowing-response { pointer-events: none; }
 .rowing-response span { color: #845b77; }
+.rowing-dock { position: absolute; height: 44px; background: #c8ae8c; border-top: 7px solid #e6cfa9; border-bottom: 7px solid #9c7961; pointer-events: none; }
+.rowing-dock i { position: absolute; left: 0; right: 0; top: 8px; border-top: 2px solid #ae8f73; }
+.rowing-dock i:nth-child(2) { top: 20px; }
+.rowing-dock i:nth-child(3) { left: auto; right: 12px; top: 30px; width: 9px; height: 24px; background: #9c7961; border: 0; }
+.rowing-shore-person { position: absolute; z-index: 4; transform: translate(-50%, -100%); pointer-events: none; }
+.rowing-shore-person svg { display: block; width: 100%; height: 100%; }
+.rowing-opening-guide { position: absolute; left: 9%; width: 82%; top: 31%; text-align: center; color: #fcf6dc; z-index: 6; pointer-events: none; }
+.rowing-opening-guide p { margin: 0; font-size: clamp(18px, 5.4vw, 24px); line-height: 1.8; font-weight: 600; text-shadow: 0 2px 6px #163e47; }
+.rowing-controls[hidden] { display: none; }
 .rowing-controls { position: absolute; left: 24px; right: 24px; bottom: max(24px, env(safe-area-inset-bottom)); z-index: 4; }
 .rowing-instruction { margin: 0 0 16px; font-size: 13px; text-align: center; }
 .rowing-paddles { display: flex; justify-content: space-between; gap: 32px; }

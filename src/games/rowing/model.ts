@@ -4,7 +4,8 @@ export type Rower = 'shiro' | 'ryo'
 export type RowAction = 'rest' | 'stroke' | 'strong' | 'refuse' | 'push' | 'reverse'
 export type Period = 'morning' | 'noon' | 'sunset' | 'night'
 export const MINUTES_PER_SECOND = 3
-export const START_MINUTE = 19 * 60
+export const START_MINUTE = 18 * 60
+const FORWARD_RAMP_START = 19 * 60
 export const EVENING_MINUTE = 22 * 60
 export const EVENING_LINE_SECONDS = 3.2
 export const STROKE_COOLDOWN = .55
@@ -39,6 +40,8 @@ export const EVENING_LINES = [
 ]
 
 export interface RowingState {
+  opening: 'ryo' | 'shiro' | 'boarding' | 'guide' | null
+  openingAge: number
   elapsed: number
   minutes: number
   x: number
@@ -80,9 +83,10 @@ export function createCoupleMotion(random: () => number = Math.random): CoupleMo
     pulseFrequency: .35 + random() * .5, pulsePhase: random() * Math.PI * 2 }
 }
 
-export function createRowing(random: () => number = Math.random): RowingState {
+export function createRowing(random: () => number = Math.random, withOpening = false): RowingState {
   return {
-    elapsed: 0, minutes: START_MINUTE, x: 195, y: 370, heading: Math.PI, spin: 0, speed: 0,
+    opening: withOpening ? 'ryo' : null, openingAge: 0,
+    elapsed: 0, minutes: START_MINUTE, x: 195, y: withOpening ? 480 : 370, heading: Math.PI, spin: 0, speed: 0,
     effort: false, eveningSeen: false, dialogue: null, dialogueAge: 0,
     lastShiro: -100, lastRyo: -100, shiroAction: 'rest', ryoAction: 'rest',
     shiroUntil: 0, ryoUntil: 0, laughUntil: 0, shiroStrokes: 0, ryoStrokes: 0,
@@ -183,18 +187,20 @@ function impulse(state: RowingState, who: Rower, reverse = false, strength = 1) 
 
 /** First evening ramps 0–50%; subsequent daylight is 30% and nights are 50%. */
 export function ryoForwardChance(minutes: number) {
-  if (minutes < EVENING_MINUTE) return .5 * Math.max(0, (minutes - START_MINUTE) / (EVENING_MINUTE - START_MINUTE))
+  if (minutes < EVENING_MINUTE) return .5 * Math.max(0, (minutes - FORWARD_RAMP_START) / (EVENING_MINUTE - FORWARD_RAMP_START))
   const hour = ((minutes / 60) % 24 + 24) % 24
   return hour >= 6 && hour < 18 ? .3 : .5
 }
 
 export function chiefHours(minutes: number) {
   const minute = ((minutes % 1440) + 1440) % 1440
-  return minute >= START_MINUTE && minute < EVENING_MINUTE
+  return minute >= FORWARD_RAMP_START && minute < EVENING_MINUTE
 }
 
 /** Independent weighted draws: no sequence, pity counter, or dependence on tapping rhythm. */
 export function row(state: RowingState, who: Rower, random: () => number = Math.random): RowAction | null {
+  if (state.opening === 'guide') state.opening = null
+  if (state.opening) return null
   const since = state.elapsed - (who === 'shiro' ? state.lastShiro : state.lastRyo)
   if (since < STROKE_COOLDOWN) return null
   state.taps++
@@ -228,6 +234,16 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
 export function tickRowing(state: RowingState, dt: number, random: () => number = Math.random) {
   if (!Number.isFinite(dt) || dt <= 0) return
   dt = Math.min(dt, .1)
+  if (state.opening) {
+    if (state.opening === 'guide') return
+    state.openingAge += dt
+    const duration = state.opening === 'ryo' ? 3.2 : state.opening === 'shiro' ? 1.8 : 1.2
+    if (state.openingAge >= duration) {
+      state.opening = state.opening === 'ryo' ? 'shiro' : state.opening === 'shiro' ? 'boarding' : 'guide'
+      state.openingAge = 0
+    }
+    return
+  }
   state.elapsed += dt
   if (state.elapsed >= state.shiroUntil) state.shiroAction = 'rest'
   if (state.elapsed >= state.ryoUntil) state.ryoAction = 'rest'
