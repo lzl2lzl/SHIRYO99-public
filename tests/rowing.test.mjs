@@ -1,10 +1,74 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance, CHIEF_SURNAMES, chiefLines, coupleVisible } from '../src/games/rowing/model.ts'
+import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance, CHIEF_SURNAMES, chiefLines, coupleVisible, createCoupleMotion, moveCouple, riverCenter } from '../src/games/rowing/model.ts'
 import { overlaps, placeResponse, rowingBounds } from '../src/games/rowing/bubble-layout.ts'
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
+
+function seeded(seed) {
+  return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296 }
+}
+function hullGap(boat, player) {
+  return Math.min(...[-48, 0, 48].map(offset => Math.hypot(boat.x - player.x - Math.sin(player.heading) * offset, boat.y - player.y + Math.cos(player.heading) * offset)))
+}
+
+test('each couple receives stable random speed, rhythm and route; new games redraw them', () => {
+  const a = createRowing(seeded(7)), b = createRowing(seeded(8))
+  for (const key of ['speed', 'frequency', 'pulseFrequency', 'phase', 'lane', 'amplitude']) {
+    assert.equal(new Set(a.couples.map(boat => boat.motion[key])).size, 8)
+  }
+  assert.notDeepEqual(a.couples.map(b => b.motion), b.couples.map(b => b.motion))
+  const start = new Map(a.couples.map(boat => [boat.id, structuredClone(boat)]))
+  for (let i = 0; i < 100; i++) tickRowing(a, .1, () => .99)
+  assert.ok(a.couples.filter(boat => start.has(boat.id)).length >= 7)
+  a.couples.forEach(boat => {
+    const before = start.get(boat.id)
+    if (before) { assert.deepEqual(boat.motion, before.motion); assert.ok(Math.hypot(boat.x - before.x, boat.y - before.y) > 2) }
+  })
+})
+
+test('couples keep moving slowly on different paths and never steer into a stationary player', () => {
+  for (let seed = 0; seed < 64; seed++) {
+    const angle = seed * Math.PI / 8, player = { x: riverCenter(370), y: 370, heading: seed * .37 }
+    const boat = { id: seed, x: player.x + Math.cos(angle) * 110, y: player.y + Math.sin(angle) * 110, heading: Math.PI, motion: createCoupleMotion(seeded(seed + 12)) }
+    let travelled = 0
+    const initialGap = hullGap(boat, player)
+    for (let i = 0; i < 600; i++) {
+      const before = { x: boat.x, y: boat.y, heading: boat.heading }
+      moveCouple(boat, player, i * .1, .1)
+      const step = Math.hypot(boat.x - before.x, boat.y - before.y)
+      assert.ok(step <= .80000001, 'NPC speed must be capped at 8 world units/second')
+      assert.ok(Math.abs(boat.heading - before.heading) <= .06500001, 'No sudden turns')
+      assert.ok(hullGap(boat, player) >= Math.min(88, initialGap) - 1e-8, 'Autonomous motion must preserve visual clearance around the player hull')
+      travelled += step
+    }
+    assert.ok(travelled > 20, `Avoidance must not make the boat permanently motionless: seed ${seed}, distance ${travelled}`)
+  }
+})
+
+test('passive drifting does not provoke collisions, while paddling into a couple still does', () => {
+  for (let seed = 1; seed <= 20; seed++) {
+    const g = createRowing(seeded(seed))
+    for (let i = 0; i < 600; i++) tickRowing(g, .1, () => .99)
+    assert.equal(g.collisions, 0, `idle river seed ${seed}`)
+  }
+  const g = createRowing(seeded(4))
+  g.couples = [{ id: 99, x: g.x, y: g.y + 108.1, heading: Math.PI, motion: createCoupleMotion(seeded(5)) }]
+  assert.ok(hullGap(g.couples[0], g) > 59)
+  row(g, 'shiro'); row(g, 'ryo', () => .01); tickRowing(g, .1, () => .2)
+  assert.equal(g.collisions, 1); assert.equal(g.encounter.complaint, '啊！')
+})
+
+test('invalid time never moves couples; recycled boats receive new motion without keeping a chief identity', () => {
+  const g = createRowing(seeded(3)), boat = g.couples[0], original = structuredClone(boat)
+  for (const dt of [NaN, Infinity, 0, -1]) moveCouple(boat, g, 0, dt)
+  assert.deepEqual(boat, original)
+  boat.y = g.cameraY - 400; boat.chiefSurname = '佐藤'; boat.chiefChecked = true
+  tickRowing(g, .01, () => .99)
+  assert.notEqual(g.couples[0].id, boat.id); assert.notDeepEqual(g.couples[0].motion, boat.motion)
+  assert.equal(g.couples[0].chiefSurname, undefined)
+})
 
 function chiefScene() {
   const g = createRowing(); g.minutes = 16 * 60

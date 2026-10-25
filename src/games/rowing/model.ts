@@ -9,7 +9,8 @@ export const COUPLE_COUNT = 8
 export const COMPLAINTS = ['啊！', '小心一点，没素质的家伙！', '你撞到我女朋友了！！']
 export const APOLOGIES = ['不好意思。', '真的非常不好意思。', '非常抱歉，我们会注意的。']
 export const CHIEF_SURNAMES = ['佐藤', '铃木', '高桥', '田中', '渡边', '伊藤', '山本', '中村', '小林', '加藤', '吉田']
-export interface CoupleBoat { id: number; x: number; y: number; heading: number; chiefChecked?: boolean; chiefSurname?: string; chiefGreeted?: boolean }
+export interface CoupleMotion { speed: number; lane: number; amplitude: number; frequency: number; phase: number; pulseFrequency: number; pulsePhase: number }
+export interface CoupleBoat { id: number; x: number; y: number; heading: number; motion?: CoupleMotion; chiefChecked?: boolean; chiefSurname?: string; chiefGreeted?: boolean }
 export interface Encounter { boatId: number; complaint: string; apology: string; age: number }
 export interface ChiefVisit { boatId: number; surname: string; line: number; age: number; masked: boolean; done: boolean }
 export function chiefLines(surname: string) {
@@ -69,7 +70,13 @@ export interface RowingState {
   collisions: number
 }
 
-export function createRowing(): RowingState {
+export function createCoupleMotion(random: () => number = Math.random): CoupleMotion {
+  return { speed: 3 + random() * 4, lane: (random() - .5) * 140, amplitude: 18 + random() * 24,
+    frequency: .12 + random() * .22, phase: random() * Math.PI * 2,
+    pulseFrequency: .35 + random() * .5, pulsePhase: random() * Math.PI * 2 }
+}
+
+export function createRowing(random: () => number = Math.random): RowingState {
   return {
     elapsed: 0, minutes: 9 * 60, x: 195, y: 370, heading: Math.PI, spin: 0, speed: 0,
     effort: false, eveningSeen: false, dialogue: null, dialogueAge: 0,
@@ -77,8 +84,75 @@ export function createRowing(): RowingState {
     shiroUntil: 0, ryoUntil: 0, laughUntil: 0, shiroStrokes: 0, ryoStrokes: 0,
     taps: 0, distance: 0, turnTravel: 0, trail: [], trailTimer: 0,
     cameraY: 0, couples: [-160, 0, 170, 540, 700, 850, 1000, 1150].map((y, id) => ({
-      id, x: riverCenter(y) + Math.sin(id * 2.3) * 78, y, heading: Math.PI + Math.sin(id) * .25,
+      id, x: riverCenter(y) + Math.sin(id * 2.3) * 78, y, heading: Math.PI + Math.sin(id) * .25, motion: createCoupleMotion(random),
     })), nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, collisionCooldown: 0, collisions: 0,
+  }
+}
+
+/** The same three hull samples are used by steering and the existing collision response. */
+function hullSamples(player: { x: number; y: number; heading: number }) {
+  return [-48, 0, 48].map(offset => ({ x: player.x + Math.sin(player.heading) * offset, y: player.y - Math.cos(player.heading) * offset }))
+}
+
+export function moveCouple(boat: CoupleBoat, player: { x: number; y: number; heading: number; velocityX?: number; velocityY?: number }, elapsed: number, dt: number) {
+  if (!Number.isFinite(dt) || dt <= 0) return
+  dt = Math.min(dt, .1)
+  const motion = boat.motion ??= createCoupleMotion()
+  const samples = hullSamples(player)
+  const gapAt = (x: number, y: number) => Math.min(...samples.map(p => Math.hypot(x - p.x, y - p.y)))
+  const startGap = gapAt(boat.x, boat.y)
+  // The player has already moved into this boat: let the collision code handle that contact.
+  if (startGap < 59) return
+  const lane = riverCenter(boat.y) + motion.lane + Math.sin(elapsed * motion.frequency + motion.phase) * motion.amplitude
+  let vx = (lane - boat.x) * .24
+  let vy = motion.speed * (.55 + .45 * Math.sin(elapsed * motion.pulseFrequency + motion.pulsePhase))
+  const nearest = samples.reduce((a, b) => Math.hypot(boat.x - a.x, boat.y - a.y) < Math.hypot(boat.x - b.x, boat.y - b.y) ? a : b)
+  if (startGap < 112) {
+    const nx = (boat.x - nearest.x) / startGap, ny = (boat.y - nearest.y) / startGap
+    const caution = Math.max(0, Math.min(1, (112 - startGap) / 24))
+    const playerVX = player.velocityX ?? 0, playerVY = player.velocityY ?? 0
+    const closing = Math.min(0, (vx - playerVX) * nx + (vy - playerVY) * ny)
+    vx -= closing * nx * caution; vy -= closing * ny * caution
+    vx = playerVX + (vx - playerVX) * (1 - caution * .45)
+    vy = playerVY + (vy - playerVY) * (1 - caution * .45)
+    vx += (boat.x >= player.x ? 1 : -1) * caution * 4 + nx * caution * 2
+    vy += ny * caution * 2
+  }
+  // Turn back gently near the riverbank, never snap to a lane or to a new path.
+  const bank = riverCenter(boat.y)
+  if (boat.x > bank + 112) vx = Math.min(vx, (bank + 112 - boat.x) * .5)
+  if (boat.x < bank - 112) vx = Math.max(vx, (bank - 112 - boat.x) * .5)
+  const speed = Math.hypot(vx, vy)
+  if (speed > 8) { vx *= 8 / speed; vy *= 8 / speed }
+  // Clip only the NPC's own step, preserving collisions caused by the player's next move.
+  const safeGap = Math.min(88, startGap)
+  let fraction = 1
+  if (gapAt(boat.x + vx * dt, boat.y + vy * dt) < safeGap) {
+    let low = 0, high = 1
+    for (let i = 0; i < 12; i++) {
+      const middle = (low + high) / 2
+      if (gapAt(boat.x + vx * dt * middle, boat.y + vy * dt * middle) >= safeGap) low = middle
+      else high = middle
+    }
+    fraction = low
+  }
+  if (fraction < .1) {
+    // If the intended lane is blocked, take a slow clear side-step instead of parking forever.
+    let best: { x: number; y: number; score: number } | undefined
+    for (let i = 0; i < 24; i++) {
+      const angle = i * Math.PI / 12, x = Math.cos(angle) * 3, y = Math.sin(angle) * 3
+      const nextX = boat.x + x * dt, nextY = boat.y + y * dt
+      if (gapAt(nextX, nextY) < safeGap || Math.abs(nextX - riverCenter(nextY)) > Math.max(112, Math.abs(boat.x - bank))) continue
+      const score = vx * x + vy * y
+      if (!best || score > best.score) best = { x, y, score }
+    }
+    if (best) { vx = best.x; vy = best.y; fraction = 1 }
+  }
+  boat.x += vx * dt * fraction; boat.y += vy * dt * fraction
+  if (Math.hypot(vx, vy) * fraction > .1) {
+    const target = Math.atan2(vx, -vy)
+    const turn = Math.atan2(Math.sin(target - boat.heading), Math.cos(target - boat.heading))
+    boat.heading += Math.max(-.65 * dt, Math.min(.65 * dt, turn))
   }
 }
 
@@ -164,6 +238,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   state.turnTravel += Math.abs(state.spin * dt)
   // A tight turn spends force on circling, not forward travel.
   const travel = state.speed * dt / (1 + Math.abs(state.spin) * 2.4)
+  const previousX = state.x, previousY = state.y
   state.x += Math.sin(state.heading) * travel
   state.y += -Math.cos(state.heading) * travel + 6 * dt
   state.distance += Math.abs(travel)
@@ -171,14 +246,14 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   const center = riverCenter(state.y)
   state.x += (Math.max(center - 95 - state.x, 0) - Math.max(state.x - center - 95, 0)) * dt * 2
   state.cameraY += (state.y - 370 - state.cameraY) * (1 - Math.exp(-3 * dt))
+  const movingPlayer = { x: state.x, y: state.y, heading: state.heading, velocityX: (state.x - previousX) / dt, velocityY: (state.y - previousY) / dt }
   state.collisionCooldown = Math.max(0, state.collisionCooldown - dt)
   if (state.encounter) {
     state.encounter.age += dt
     if (state.encounter.age >= 5.8) state.encounter = null
   }
   for (const boat of state.couples) {
-    boat.y += (3 + boat.id % 3) * dt
-    boat.x += (riverCenter(boat.y) + Math.sin(boat.id * 2.3 + boat.y / 220) * 78 - boat.x) * dt * .08
+    moveCouple(boat, movingPlayer, state.elapsed, dt)
     // One independent 1/10 draw per visible boat at dusk, never per animation frame.
     if (periodAt(state.minutes) === 'sunset' && coupleVisible(boat, state.cameraY) && !boat.chiefChecked) {
       boat.chiefChecked = true
@@ -186,9 +261,9 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
     }
     // Three hull samples approximate the long boat, rather than colliding with portrait pixels.
     let hit: { dx: number; dy: number; distance: number } | null = null
-    for (const offset of [-48, 0, 48]) {
-      const dx = boat.x - (state.x + Math.sin(state.heading) * offset)
-      const dy = boat.y - (state.y - Math.cos(state.heading) * offset)
+    for (const sample of hullSamples(state)) {
+      const dx = boat.x - sample.x
+      const dy = boat.y - sample.y
       const distance = Math.hypot(dx, dy)
       if (distance < 59 && (!hit || distance < hit.distance)) hit = { dx, dy, distance }
     }
@@ -240,7 +315,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       const id = state.nextCoupleId++
       const start = state.cameraY - 200
       const y = start + ((boat.y - start) % 1500 + 1500) % 1500
-      state.couples[i] = { id, x: riverCenter(y) + Math.sin(id * 2.3) * 78, y, heading: Math.PI + Math.sin(id) * .25 }
+      state.couples[i] = { id, x: riverCenter(y) + Math.sin(id * 2.3) * 78, y, heading: Math.PI + Math.sin(id) * .25, motion: createCoupleMotion() }
     }
   }
   for (const point of state.trail) point.age += dt

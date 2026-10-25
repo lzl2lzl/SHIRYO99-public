@@ -25,7 +25,8 @@ function Portrait({ who, active, masked = false }: { who: Rower; active: boolean
 }
 
 export function RowingGame({ onExit }: GameScreenProps) {
-  const game = useRef(createRowing())
+  const [initialGame] = useState(createRowing)
+  const game = useRef(initialGame)
   const [, repaint] = useState(0)
   const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
   const [hidden, setHidden] = useState(document.hidden)
