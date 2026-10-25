@@ -199,6 +199,8 @@ test('first evening guarantees one nearby chief greeting even with an unlucky dr
     tickRowing(g, .01, () => 0); assert.equal(g.chiefVisit, null)
     for (let i = 0; i < 100; i++) tickRowing(g, .1, () => 0)
     assert.equal(g.chiefVisit, null, 'No second guaranteed chief or random first-night chain')
+    // This assertion concerns a visible boat's nightly draw; random motion may have taken the fixture offscreen.
+    g.couples[0].y = g.cameraY + 200; g.couples[0].x = 90
     g.eveningSeen = true; g.minutes = 43 * 60
     tickRowing(g, .01, () => .999); assert.equal(g.chiefVisit, null)
     assert.equal(g.couples[0].chiefChecked, true)
