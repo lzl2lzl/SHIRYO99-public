@@ -175,6 +175,16 @@ export function clockAt(minutes: number) {
   return `${String(Math.floor(whole / 60) % 24).padStart(2, '0')}:${String(whole % 60).padStart(2, '0')}`
 }
 
+/** Display-only ten-minute clock; simulation and dialogue keep their exact time. */
+export function clockDisplayAt(minutes: number) {
+  const shown = Math.floor((minutes + 1e-7) / 10) * 10
+  const date = new Date(Date.UTC(2026, 3, 1) + shown * 60000)
+  const hour = date.getUTCHours(), minute = String(date.getUTCMinutes()).padStart(2, '0')
+  const iso = date.toISOString().slice(0, 16)
+  return { date: iso.slice(0, 10).replaceAll('-', '/'), time: `${String(hour % 12 || 12).padStart(2, '0')}:${minute}`,
+    meridiem: hour < 12 ? 'am' : 'pm', dateTime: iso }
+}
+
 function impulse(state: RowingState, who: Rower, reverse = false, strength = 1) {
   const direction = reverse ? -1 : 1
   state.spin = Math.max(-2.5, Math.min(2.5, state.spin + (who === 'shiro' ? .72 : -.72) * direction * strength))

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance, CHIEF_SURNAMES, chiefLines, coupleVisible, createCoupleMotion, moveCouple, riverCenter } from '../src/games/rowing/model.ts'
 import { overlaps, placeResponse, rowingBounds } from '../src/games/rowing/bubble-layout.ts'
+import { clockDisplayAt } from '../src/games/rowing/model.ts'
 import { createDailyDialogue, tickDailyDialogue, DAILY_LINES, SMALL_TALK, dailyLineSeconds } from '../src/games/rowing/daily-dialogue.ts'
 
 test('daily conversations start on day two, cross each scheduled time once and repeat on later days', () => {
@@ -82,6 +83,20 @@ test('rowing and clock continue during daily speech; invalid time and a fresh ga
 })
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
+
+test('display clock uses ten-minute steps, correct am/pm and calendar rollover from April 1', () => {
+  for (const [minutes, date, time, meridiem] of [
+    [1080, '2026/04/01', '06:00', 'pm'], [1089.99, '2026/04/01', '06:00', 'pm'], [1090, '2026/04/01', '06:10', 'pm'],
+    [1440, '2026/04/02', '12:00', 'am'], [1440 + 348, '2026/04/02', '05:40', 'am'],
+    [1440 + 720, '2026/04/02', '12:00', 'pm'], [1440 * 30, '2026/05/01', '12:00', 'am'],
+  ]) {
+    const result = clockDisplayAt(minutes)
+    assert.deepEqual([result.date, result.time, result.meridiem], [date, time, meridiem])
+    assert.ok(!/[\u4e00-\u9fff]/u.test(JSON.stringify(result)))
+  }
+  const g = createRowing(); g.minutes = 1440 + 239.9; g.eveningSeen = true
+  tickRowing(g, .1); assert.equal(g.daily.chat.kind, 'tired'); assert.equal(clockDisplayAt(g.minutes).time, '04:00')
+})
 
 test('shore opening freezes the clock through boarding and two automatic announcements separated by a gap', () => {
   const g = createRowing(() => .2, true), position = { x: g.x, y: g.y }

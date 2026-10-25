@@ -1,13 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type KeyboardEvent } from 'react'
 import type { GameDefinition, GameScreenProps } from '../../engine/types'
-import { chiefLines, clockAt, createRowing, EVENING_LINES, periodAt, row, tickRowing, type Rower } from './model'
+import { chiefLines, clockDisplayAt, createRowing, EVENING_LINES, periodAt, row, tickRowing, type Rower } from './model'
 import { bankPath, bankX, riverDetails } from './scenery'
 import { placeResponse, rowingBounds } from './bubble-layout'
 import './rowing.css'
 
 
 const ASSETS = `${import.meta.env.BASE_URL}assets/characters/`
-const PERIODS = { morning: '早上', noon: '午后', sunset: '夕阳', night: '夜晚' }
 
 const MOSAIC_COLORS = ['#a68bc6', '#b4a1c9', '#8f7aa9', '#c1b1d1', '#786783', '#ddd0cd', '#b3a8bd', '#9b8ba9']
 function Portrait({ who, active, masked = false }: { who: Rower; active: boolean; masked?: boolean }) {
@@ -37,6 +36,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const held = useRef(new Map<string, Rower>())
   const state = game.current
   const period = periodAt(state.minutes)
+  const clock = clockDisplayAt(state.minutes)
   const dialogue = state.dialogue === null ? null : EVENING_LINES[state.dialogue]
   const onShore = state.opening === 'ryo' || state.opening === 'shiro' || state.opening === 'boarding'
   const announcement = state.opening === 'guide' ? '点击人物' : state.opening === 'guide-start' ? '开始划船' : null
@@ -178,9 +178,9 @@ export function RowingGame({ onExit }: GameScreenProps) {
     style={{ '--row-angle': `${theta}deg` } as CSSProperties}>
     <header className="rowing-header">
       <button className="rowing-back" onClick={onExit} aria-label="返回游戏大厅">← 返回</button>
-      <div className="rowing-clock" aria-label={`第${Math.floor(state.minutes / 1440) + 1}天 ${clockAt(state.minutes)}`}>
-        <span>第 {Math.floor(state.minutes / 1440) + 1} 天 · {PERIODS[period]}</span>
-        <time>{clockAt(state.minutes)}</time>
+      <div className="rowing-clock" aria-label={`${clock.date} ${clock.time} ${clock.meridiem}`}>
+        <span>{clock.date}</span>
+        <time dateTime={clock.dateTime}>{clock.time}<small>{clock.meridiem}</small></time>
       </div>
     </header>
     <div className="rowing-celestial" aria-hidden="true"><span /></div>
