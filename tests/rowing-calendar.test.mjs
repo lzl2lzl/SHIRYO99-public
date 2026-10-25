@@ -8,6 +8,20 @@ import { dailyLineSeconds } from '../src/games/rowing/daily-dialogue.ts'
 
 const at = (date) => (Date.parse(date+'Z')-CALENDAR_EPOCH)/60000
 
+test('2004 story epoch and historical Japanese holidays agree with published dates', () => {
+  assert.equal(calendarAt(createRowing().minutes).key, '2004-04-07')
+  assert.equal(calendarAt(1440).key, '2004-04-08')
+  assert.deepEqual([...japaneseHolidays(2004).keys()].sort(), ['1-1','1-12','2-11','3-20','4-29','5-3','5-4','5-5','7-19','9-20','9-23','10-11','11-3','11-23','12-23'].sort())
+  assert.equal(japaneseHolidays(2004).has('2-23'), false)
+  assert.equal(japaneseHolidays(2004).has('8-11'), false)
+  assert.equal(japaneseHolidays(2007).has('5-6'), false)
+  assert.equal(japaneseHolidays(2019).has('5-1'), true)
+  assert.equal(japaneseHolidays(2020).has('7-23'), true)
+  assert.equal(japaneseHolidays(2021).has('8-9'), true)
+  assert.equal(calendarAt(at('2008-02-29T23:59')).key, '2008-02-29')
+  assert.equal(calendarAt(at('2008-03-01T00:00')).key, '2008-03-01')
+})
+
 test('2026 and 2027 holidays match the Cabinet Office including substitute and citizen holidays', () => {
   const expected = {
     2026:['1-1','1-12','2-11','2-23','3-20','4-29','5-3','5-4','5-5','5-6','7-20','8-11','9-21','9-22','9-23','10-12','11-3','11-23'],
@@ -40,7 +54,7 @@ test('Valentine traffic runs for all 24 hours and ends on the next date', () => 
 })
 
 test('both birthday scripts start exactly on their simulated midnight, once per year', () => {
-  for (const year of [2026,2027,2028]) for (const [date,who,count] of [['08-24','shiro',12],['09-09','ryo',10]]) {
+  for (const year of [2004,2005,2026,2027,2028]) for (const [date,who,count] of [['08-24','shiro',12],['09-09','ryo',10]]) {
     const midnight=at(`${year}-${date}T00:00`),s=createCalendarDialogue()
     tickCalendarDialogue(s,midnight-2,midnight-1,.1,false);assert.equal(s.chat,null)
     tickCalendarDialogue(s,midnight-.01,midnight,.01,false)

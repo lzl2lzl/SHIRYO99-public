@@ -1,5 +1,5 @@
 import { createDailyDialogue, tickDailyDialogue, type DailyDialogue } from './daily-dialogue.ts'
-import { calendarAt } from './calendar.ts'
+import { calendarAt, CALENDAR_EPOCH } from './calendar.ts'
 import { riverHalfWidth } from './river.ts'
 import { createCalendarDialogue, tickCalendarDialogue, type CalendarDialogue } from './calendar-dialogue.ts'
 import { COUPLE_COUNT, CONTACT_DISTANCE, createCouple, createCoupleMotion, moveCouple, departCouple, hullContact, coupleVisible, coupleTarget, riverCenter, type CoupleBoat } from './couples.ts'
@@ -157,7 +157,7 @@ export function clockAt(minutes: number) {
 /** Display-only ten-minute clock; simulation and dialogue keep their exact time. */
 export function clockDisplayAt(minutes: number) {
   const shown = Math.floor((minutes + 1e-7) / 10) * 10
-  const date = new Date(Date.UTC(2026, 3, 1) + shown * 60000)
+  const date = new Date(CALENDAR_EPOCH + shown * 60000)
   const hour = date.getUTCHours(), minute = String(date.getUTCMinutes()).padStart(2, '0')
   const iso = date.toISOString().slice(0, 16)
   return { date: iso.slice(0, 10).replaceAll('-', '/'), time: `${String(hour).padStart(2, '0')}:${minute}`, dateTime: iso }

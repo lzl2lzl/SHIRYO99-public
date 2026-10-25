@@ -2,7 +2,8 @@
  * National holidays: https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html
  * Equinox forecasts (2026–2050): https://www.nao.ac.jp/faq/a0301.html
  * Traffic increases are game design, not a forecast of real boating attendance. */
-export const CALENDAR_EPOCH = Date.UTC(2026, 3, 1)
+import { HISTORICAL_HOLIDAYS } from './historical-holidays.ts'
+export const CALENDAR_EPOCH = Date.UTC(2004, 3, 7)
 const DAY_MS = 86400000
 const spring = [20,21,20,20,20,21,20,20,20,21,20,20,20,21,20,20,20,21,20,20,20,21,20,20,20]
 const autumn = [23,23,22,23,23,23,22,23,23,23,22,23,23,23,22,23,23,23,22,22,23,23,22,22,23]
@@ -11,6 +12,16 @@ const key = (month: number, day: number) => `${month}-${day}`
 export function japaneseHolidays(year: number): ReadonlyMap<string, string> {
   const cached = years.get(year)
   if (cached) return cached
+  const historical = HISTORICAL_HOLIDAYS[year]
+  if (historical) {
+    const dates = new Map(historical.split('|').map(entry => {
+      const [date, name] = entry.split(':')
+      return [date, name] as const
+    }))
+    if (years.size >= 4) years.delete(years.keys().next().value!)
+    years.set(year, dates)
+    return dates
+  }
   const dates = new Map<string, string>()
   const add = (m: number, d: number, name: string) => dates.set(key(m, d), name)
   for (const [m,d,name] of [[1,1,'元日'],[2,11,'建国纪念日'],[2,23,'天皇诞生日'],[4,29,'昭和日'],[5,3,'宪法纪念日'],[5,4,'绿之日'],[5,5,'儿童节'],[8,11,'山之日'],[11,3,'文化日'],[11,23,'勤劳感谢日']] as const) add(m,d,name)

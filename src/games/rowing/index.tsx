@@ -41,7 +41,8 @@ export function RowingGame({ onExit }: GameScreenProps) {
     const preview = birthday === 'shiro' || birthday === 'ryo'
     const state = createRowing(Math.random, !preview)
     if (preview) {
-      const midnight = birthday === 'shiro' ? Date.UTC(2026, 7, 24) : Date.UTC(2026, 8, 9)
+      const year = new Date(CALENDAR_EPOCH).getUTCFullYear()
+      const midnight = birthday === 'shiro' ? Date.UTC(year, 7, 24) : Date.UTC(year, 8, 9)
       state.minutes = (midnight - CALENDAR_EPOCH - 1000) / 60000
       state.eveningSeen = true
       state.effort = true

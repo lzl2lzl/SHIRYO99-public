@@ -88,9 +88,9 @@ function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing
 
 test('display clock uses ten-minute steps, 24-hour time and calendar rollover from April 1', () => {
   for (const [minutes, date, time] of [
-    [1080, '2026/04/01', '18:00'], [1089.99, '2026/04/01', '18:00'], [1090, '2026/04/01', '18:10'],
-    [1440, '2026/04/02', '00:00'], [1440 + 348, '2026/04/02', '05:40'],
-    [1440 + 720, '2026/04/02', '12:00'], [1440 * 30, '2026/05/01', '00:00'],
+    [1080, '2004/04/07', '18:00'], [1089.99, '2004/04/07', '18:00'], [1090, '2004/04/07', '18:10'],
+    [1440, '2004/04/08', '00:00'], [1440 + 348, '2004/04/08', '05:40'],
+    [1440 + 720, '2004/04/08', '12:00'], [1440 * 24, '2004/05/01', '00:00'],
   ]) {
     const result = clockDisplayAt(minutes)
     assert.deepEqual([result.date, result.time], [date, time])
