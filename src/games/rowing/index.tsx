@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type KeyboardEvent } from 'react'
 import type { GameDefinition, GameScreenProps } from '../../engine/types'
 import { clockAt, createRowing, EVENING_LINES, periodAt, row, tickRowing, type Rower } from './model'
 import { bankPath, bankX, riverDetails } from './scenery'
+import { placeResponse, rowingBounds } from './bubble-layout'
 import './rowing.css'
 
 
@@ -26,6 +27,8 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const [hidden, setHidden] = useState(document.hidden)
   const [size, setSize] = useState({ width: 390, height: 844 })
   const scene = useRef<HTMLElement>(null)
+  const responseElement = useRef<HTMLDivElement>(null)
+  const [measuredResponse, setMeasuredResponse] = useState({ text: '', width: 0, height: 0 })
   const held = useRef(new Map<string, Rower>())
   const state = game.current
   const period = periodAt(state.minutes)
@@ -132,12 +135,21 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const couple = state.couples.find(boat => boat.id === encounter?.boatId)
   const response = encounter ? complaining ? encounter.complaint : encounter.apology : ''
   const encounterAnchor = complaining && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 140) - 36 } : { x: seats[0].x, y: seats[0].y - 108 * boatScale }
-  const responseWidth = Math.min(270, size.width * .68, Math.max(112, response.length * 16 + 40))
-  const responseLeft = Math.max(16, Math.min(size.width - responseWidth - 16, encounterAnchor.x - responseWidth / 2))
-  const responseBottom = Math.min(size.height - 155, Math.max(225, encounterAnchor.y - 20))
-  const responseHeight = 62 + Math.ceil(response.length * 16 / (responseWidth - 40)) * 26
-  const responseBelowY = encounterAnchor.y + 92
-  const responseBelow = complaining && responseBelowY + responseHeight < size.height - 126 && encounterAnchor.y > Math.min(...seats.map(seat => seat.y)) - 30
+  const responseWidth = Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44))
+  const responseHeight = measuredResponse.text === response && measuredResponse.width === responseWidth ? measuredResponse.height : 62 + Math.ceil(response.length * 16 / (responseWidth - 40)) * 26
+  const protectedBoat = rowingBounds({ x: state.x / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 140) }, radians, boatScale, seats)
+  const responsePosition = placeResponse(size, encounterAnchor, protectedBoat, responseWidth, responseHeight)
+  useLayoutEffect(() => {
+    const element = responseElement.current
+    if (!element) return
+    const measure = () => {
+      const height = element.getBoundingClientRect().height
+      setMeasuredResponse(previous => previous.text === response && previous.width === responseWidth && previous.height === height ? previous : { text: response, width: responseWidth, height })
+    }
+    measure()
+    const observer = new ResizeObserver(measure); observer.observe(element)
+    return () => observer.disconnect()
+  }, [response, responseWidth, Boolean(dialogue)])
 
   return <main ref={scene} className="rowing-screen" data-period={period} data-effort={state.effort} data-hidden={hidden}
     data-spinning={Math.abs(state.spin) > 1.05} data-heading={state.heading.toFixed(2)} data-taps={state.taps}
@@ -204,8 +216,8 @@ export function RowingGame({ onExit }: GameScreenProps) {
       style={{ left: bubbleLeft, top: bubbleY, width: bubbleWidth, '--row-tail-x': `${Math.max(18, Math.min(bubbleWidth - 18, speakerSeat.x - bubbleLeft))}px` } as CSSProperties}>
       <span>{dialogue.speaker}</span><p>{dialogue.text}</p>
     </div> : null}
-    {!dialogue && encounter ? <div className="rowing-dialogue rowing-response" role="status" data-speaker={complaining ? 'couple' : 'shiro'} data-below={responseBelow}
-      style={{ left: responseLeft, top: responseBelow ? responseBelowY : responseBottom, width: responseWidth, '--row-tail-x': `${Math.max(16, Math.min(responseWidth - 16, encounterAnchor.x - responseLeft))}px` } as CSSProperties}>
+    {!dialogue && encounter ? <div ref={responseElement} className="rowing-dialogue rowing-response rowing-collision-response" role="status" data-speaker={complaining ? 'couple' : 'shiro'} data-below={responsePosition.below}
+      style={{ left: responsePosition.left, top: responsePosition.top, transform: 'none', width: responseWidth, '--row-tail-x': `${responsePosition.tailX}px` } as CSSProperties}>
       <span>{complaining ? '♥' : '宇都木士郎'}</span><p>{response}</p>
     </div> : null}
     <footer className="rowing-controls">

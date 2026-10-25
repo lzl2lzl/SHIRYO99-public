@@ -5,6 +5,7 @@ export const MINUTES_PER_SECOND = 3
 export const EVENING_MINUTE = 18 * 60
 export const EVENING_LINE_SECONDS = 3.2
 export const STROKE_COOLDOWN = .55
+export const COUPLE_COUNT = 8
 export const COMPLAINTS = ['啊！', '小心一点，没素质的家伙！', '你撞到我女朋友了！！']
 export const APOLOGIES = ['不好意思。', '真的非常不好意思。', '非常抱歉，我们会注意的。']
 export interface CoupleBoat { id: number; x: number; y: number; heading: number }
@@ -56,11 +57,9 @@ export function createRowing(): RowingState {
     lastShiro: -100, lastRyo: -100, shiroAction: 'rest', ryoAction: 'rest',
     shiroUntil: 0, ryoUntil: 0, laughUntil: 0, shiroStrokes: 0, ryoStrokes: 0,
     taps: 0, distance: 0, turnTravel: 0, trail: [], trailTimer: 0,
-    cameraY: 0, couples: [
-      { id: 0, x: 210, y: 590, heading: Math.PI + .15 },
-      { id: 1, x: 125, y: 870, heading: Math.PI - .25 },
-      { id: 2, x: 265, y: 1120, heading: Math.PI + .2 },
-    ], nextCoupleId: 3, encounter: null, collisionCooldown: 0, collisions: 0,
+    cameraY: 0, couples: [-160, 0, 170, 540, 700, 850, 1000, 1150].map((y, id) => ({
+      id, x: riverCenter(y) + Math.sin(id * 2.3) * 78, y, heading: Math.PI + Math.sin(id) * .25,
+    })), nextCoupleId: COUPLE_COUNT, encounter: null, collisionCooldown: 0, collisions: 0,
   }
 }
 
@@ -181,9 +180,10 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   for (let i = 0; i < state.couples.length; i++) {
     const boat = state.couples[i]
     if (state.encounter?.boatId === boat.id) continue
-    if (boat.y < state.cameraY - 200 || boat.y > state.cameraY + 1400) {
+    if (boat.y < state.cameraY - 200 || boat.y > state.cameraY + 1300) {
       const id = state.nextCoupleId++
-      const y = boat.y < state.cameraY - 200 ? Math.max(state.cameraY + 900, ...state.couples.map(b => b.y + 230)) : state.cameraY - 150
+      const start = state.cameraY - 200
+      const y = start + ((boat.y - start) % 1500 + 1500) % 1500
       state.couples[i] = { id, x: riverCenter(y) + Math.sin(id * 2.3) * 78, y, heading: Math.PI + Math.sin(id) * .25 }
     }
   }

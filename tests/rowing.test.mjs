@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES } from '../src/games/rowing/model.ts'
+import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT } from '../src/games/rowing/model.ts'
+import { overlaps, placeResponse, rowingBounds } from '../src/games/rowing/bubble-layout.ts'
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
 
@@ -138,7 +139,44 @@ test('night scene takes precedence over collision speech and distant boats recyc
   tickRowing(g, .1); assert.equal(g.encounter, null); assert.ok(g.minutes > 1080)
   const trip = createRowing(); trip.y = 5000; trip.cameraY = 4630
   tickRowing(trip, .01)
-  assert.equal(trip.couples.length, 3); assert.ok(trip.couples.every(b => b.id >= 3 && b.y > trip.cameraY + 700))
+  assert.equal(trip.couples.length, COUPLE_COUNT)
+  assert.ok(trip.couples.every(b => b.id >= COUPLE_COUNT && b.y >= trip.cameraY - 200 && b.y <= trip.cameraY + 1300))
+})
+
+test('more couples stay distributed around the moving camera without growing the pool', () => {
+  const g = createRowing()
+  assert.equal(g.couples.length, 8)
+  assert.ok(g.couples.filter(b => b.y >= 0 && b.y <= 700).length >= 4)
+  tickRowing(g, .01); assert.equal(g.collisions, 0)
+  for (const y of [5000, -3000, 10000, 370]) {
+    g.y = y; g.cameraY = y - 370; g.encounter = null
+    tickRowing(g, .01)
+    assert.equal(g.couples.length, 8)
+    assert.equal(new Set(g.couples.map(b => b.id)).size, 8)
+    assert.ok(g.couples.every(b => b.y >= g.cameraY - 200 && b.y <= g.cameraY + 1300))
+  }
+})
+
+test('collision bubbles and tails avoid the whole rotated boat and portraits at narrow and desktop sizes', () => {
+  for (const width of [320, 390, 560]) for (const height of [640, 844]) {
+    const scale = Math.max(180, Math.min(230, width * .48)) / 220
+    for (const x of [95, 195, 300]) for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 12) {
+      const center = { x: x / 390 * width, y: 50 + 370 / 700 * (height - 140) }
+      const seats = [-35, 35].map(sx => ({ x: center.x + (Math.cos(angle) * sx - Math.sin(angle) * 20) * scale, y: center.y + (Math.sin(angle) * sx + Math.cos(angle) * 20) * scale }))
+      const bounds = rowingBounds(center, angle, scale, seats)
+      for (const text of [...COMPLAINTS, ...APOLOGIES]) {
+        const bubbleWidth = Math.min(300, width - 32, Math.max(112, text.length * 16 + 44))
+        const bubbleHeight = 62 + Math.ceil(text.length * 16 / (bubbleWidth - 40)) * 26
+        for (const anchor of [seats[0], { x: center.x, y: center.y - 100 }, { x: center.x, y: center.y + 100 }]) {
+          const bubble = placeResponse({ width, height }, anchor, bounds, bubbleWidth, bubbleHeight)
+          const rect = { left: bubble.left, top: bubble.top - (bubble.below ? 10 : 0), right: bubble.left + bubbleWidth, bottom: bubble.top + bubbleHeight + (bubble.below ? 0 : 10) }
+          assert.equal(overlaps(rect, bounds), false)
+          assert.ok(bubble.left >= 16 && bubble.left + bubbleWidth <= width - 16)
+          assert.ok(bubble.top >= 0 && bubble.top + bubbleHeight <= height - 108)
+        }
+      }
+    }
+  }
 })
 
 test('UI references approved portraits and stops animation while hidden or entering', () => {
