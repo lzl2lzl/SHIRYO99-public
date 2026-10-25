@@ -156,7 +156,8 @@ export function RowingGame({ onExit }: GameScreenProps) {
   })
   const boardingProgress = state.opening === 'boarding' ? reduced ? 1 : Math.min(1, state.openingAge / 1.2) : 0
   const boardingEase = boardingProgress * boardingProgress * (3 - 2 * boardingProgress)
-  const shoreSeats = seats.map(seat => ({ ...seat, x: seat.x - 35 * (1 - boardingEase), y: seat.y - 85 * (1 - boardingEase) }))
+  // Feet start 20px inside the wooden dock, then interpolate to the unchanged boat seats.
+  const shoreSeats = seats.map(seat => ({ ...seat, x: seat.x - 35 * (1 - boardingEase), y: seat.y - 65 * (1 - boardingEase) }))
   const dockY = 50 + (dockOrigin.current - state.cameraY) / 700 * (size.height - 50) - 20 * boatScale - 85
   const openingSpeaker = shoreSeats[state.opening === 'ryo' ? 1 : 0]
   const openingLeft = Math.max(16, Math.min(size.width - 236, openingSpeaker.x - 110))
