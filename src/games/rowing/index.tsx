@@ -189,9 +189,9 @@ export function RowingGame({ onExit }: GameScreenProps) {
     style={{ '--row-angle': `${theta}deg` } as CSSProperties}>
     <header className="rowing-header">
       <button className="rowing-back" onClick={onExit} aria-label="返回游戏大厅">← 返回</button>
-      <div className="rowing-clock" aria-label={`${clock.date} ${clock.time} ${clock.meridiem}`}>
+      <div className="rowing-clock" aria-label={`${clock.date} ${clock.time}`}>
         <span>{clock.date}</span>
-        <time dateTime={clock.dateTime}>{clock.time}<small>{clock.meridiem}</small></time>
+        <time dateTime={clock.dateTime}>{clock.time}</time>
       </div>
     </header>
     <div className="rowing-celestial" aria-hidden="true"><span /></div>

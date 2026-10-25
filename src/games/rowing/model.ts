@@ -155,8 +155,7 @@ export function clockDisplayAt(minutes: number) {
   const date = new Date(Date.UTC(2026, 3, 1) + shown * 60000)
   const hour = date.getUTCHours(), minute = String(date.getUTCMinutes()).padStart(2, '0')
   const iso = date.toISOString().slice(0, 16)
-  return { date: iso.slice(0, 10).replaceAll('-', '/'), time: `${String(hour % 12 || 12).padStart(2, '0')}:${minute}`,
-    meridiem: hour < 12 ? 'am' : 'pm', dateTime: iso }
+  return { date: iso.slice(0, 10).replaceAll('-', '/'), time: `${String(hour).padStart(2, '0')}:${minute}`, dateTime: iso }
 }
 
 function impulse(state: RowingState, who: Rower, reverse = false, strength = 1) {

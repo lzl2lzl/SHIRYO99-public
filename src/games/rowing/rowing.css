@@ -12,7 +12,6 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-clock { text-align: right; }
 .rowing-clock span { display: block; font-size: 12px; line-height: 1.6; }
 .rowing-clock time { display: block; font-size: 32px; line-height: 1.3; font-variant-numeric: tabular-nums; font-weight: 400; letter-spacing: -.02em; }
-.rowing-clock time small { margin-left: 6px; font-size: 14px; letter-spacing: 0; }
 .rowing-water, .rowing-stage, .rowing-boat-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .rowing-stage, .rowing-water { height: calc(100% - 50px); top: 50px; overflow: visible; }
 .rowing-boat-layer { top: 50px; height: calc(100% - 50px); }

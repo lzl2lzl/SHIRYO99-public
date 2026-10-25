@@ -86,14 +86,14 @@ test('rowing and clock continue during daily speech; invalid time and a fresh ga
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
 
-test('display clock uses ten-minute steps, correct am/pm and calendar rollover from April 1', () => {
-  for (const [minutes, date, time, meridiem] of [
-    [1080, '2026/04/01', '06:00', 'pm'], [1089.99, '2026/04/01', '06:00', 'pm'], [1090, '2026/04/01', '06:10', 'pm'],
-    [1440, '2026/04/02', '12:00', 'am'], [1440 + 348, '2026/04/02', '05:40', 'am'],
-    [1440 + 720, '2026/04/02', '12:00', 'pm'], [1440 * 30, '2026/05/01', '12:00', 'am'],
+test('display clock uses ten-minute steps, 24-hour time and calendar rollover from April 1', () => {
+  for (const [minutes, date, time] of [
+    [1080, '2026/04/01', '18:00'], [1089.99, '2026/04/01', '18:00'], [1090, '2026/04/01', '18:10'],
+    [1440, '2026/04/02', '00:00'], [1440 + 348, '2026/04/02', '05:40'],
+    [1440 + 720, '2026/04/02', '12:00'], [1440 * 30, '2026/05/01', '00:00'],
   ]) {
     const result = clockDisplayAt(minutes)
-    assert.deepEqual([result.date, result.time, result.meridiem], [date, time, meridiem])
+    assert.deepEqual([result.date, result.time], [date, time])
     assert.ok(!/[\u4e00-\u9fff]/u.test(JSON.stringify(result)))
   }
   const g = createRowing(); g.minutes = 1440 + 239.9; g.eveningSeen = true
