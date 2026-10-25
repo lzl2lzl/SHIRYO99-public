@@ -1,3 +1,5 @@
+import { createDailyDialogue, tickDailyDialogue, type DailyDialogue } from './daily-dialogue.ts'
+
 export type Rower = 'shiro' | 'ryo'
 export type RowAction = 'rest' | 'stroke' | 'strong' | 'refuse' | 'push' | 'reverse'
 export type Period = 'morning' | 'noon' | 'sunset' | 'night'
@@ -67,6 +69,7 @@ export interface RowingState {
   nextCoupleId: number
   encounter: Encounter | null
   chiefVisit: ChiefVisit | null
+  daily: DailyDialogue
   collisionCooldown: number
   collisions: number
 }
@@ -86,7 +89,7 @@ export function createRowing(random: () => number = Math.random): RowingState {
     taps: 0, distance: 0, turnTravel: 0, trail: [], trailTimer: 0,
     cameraY: 0, couples: [-160, 0, 170, 540, 700, 850, 1000, 1150].map((y, id) => ({
       id, x: riverCenter(y) + Math.sin(id * 2.3) * 78, y, heading: Math.PI + Math.sin(id) * .25, motion: createCoupleMotion(random),
-    })), nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, collisionCooldown: 0, collisions: 0,
+    })), nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, daily: createDailyDialogue(), collisionCooldown: 0, collisions: 0,
   }
 }
 
@@ -236,6 +239,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       else state.dialogue = null
     }
   }
+  const previousMinutes = state.minutes
   state.minutes += dt * MINUTES_PER_SECOND
   if (!state.eveningSeen && state.minutes >= EVENING_MINUTE) {
     state.eveningSeen = true; state.dialogue = 0; state.dialogueAge = 0; state.laughUntil = 0; state.encounter = null
@@ -281,7 +285,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       const overlap = 59 - hit.distance
       boat.x += nx * (overlap + .5); boat.y += ny * (overlap + .5)
       state.speed *= .7
-      if (state.dialogue === null && !state.encounter && state.collisionCooldown === 0) {
+      if (state.dialogue === null && !state.encounter && (!state.daily.chat || state.daily.chat.kind === 'random') && state.collisionCooldown === 0) {
         const pick = (choices: string[]) => choices[Math.min(choices.length - 1, Math.max(0, Math.floor(random() * choices.length)))]
         state.encounter = { boatId: boat.id, complaint: boat.chiefSurname ? '啊！' : pick(COMPLAINTS), apology: boat.chiefSurname ? APOLOGIES[2] : pick(APOLOGIES), age: 0 }
         state.collisionCooldown = 9; state.collisions++; state.laughUntil = 0
@@ -291,13 +295,16 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   }
   const speakingBoat = state.couples.find(candidate => candidate.id === state.encounter?.boatId)
   if (speakingBoat?.chiefSurname && !coupleVisible(speakingBoat, state.cameraY)) state.encounter = null
+  tickDailyDialogue(state.daily, previousMinutes, state.minutes, dt,
+    state.dialogue !== null || Boolean(state.encounter) || Boolean(state.chiefVisit && !state.chiefVisit.done), random)
+  if (state.daily.chat) state.laughUntil = 0
   const visit = state.chiefVisit
   if (visit) {
     const boat = state.couples.find(candidate => candidate.id === visit.boatId)
     if (!boat || !coupleVisible(boat, state.cameraY)) {
       state.chiefVisit = null
       if (state.encounter?.boatId === visit.boatId) state.encounter = null
-    } else if (!visit.done && state.dialogue === null && !state.encounter) {
+    } else if (!visit.done && state.dialogue === null && !state.encounter && !state.daily.chat) {
       visit.age += dt
       if (visit.age >= (visit.line === 1 ? 1.2 : 3.6)) {
         visit.age = 0; visit.line++
@@ -306,7 +313,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       }
     }
   }
-  if (!state.chiefVisit && state.dialogue === null && !state.encounter && chiefHours(state.minutes)) {
+  if (!state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && chiefHours(state.minutes)) {
     const boat = state.couples.filter(candidate => candidate.chiefSurname && !candidate.chiefGreeted && coupleVisible(candidate, state.cameraY))
       .sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))[0]
     if (boat) {

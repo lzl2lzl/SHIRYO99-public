@@ -138,11 +138,13 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const encounter = state.encounter
   const visit = state.chiefVisit
   const chiefLine = visit && !visit.done ? chiefLines(visit.surname)[visit.line] : null
+  const dailyChat = state.daily.chat
+  const dailyLine = dailyChat?.lines[dailyChat.line]
   const complaining = Boolean(encounter && encounter.age < 2.6)
   const couple = state.couples.find(boat => boat.id === (encounter?.boatId ?? visit?.boatId))
-  const response = encounter ? complaining ? encounter.complaint : encounter.apology : chiefLine?.text ?? ''
-  const responseWho = encounter ? complaining ? 'couple' : 'shiro' : chiefLine?.who
-  const responseSpeaker = encounter ? complaining ? '周围的情侣' : '宇都木士郎' : chiefLine?.speaker ?? ''
+  const response = encounter ? complaining ? encounter.complaint : encounter.apology : dailyLine?.text ?? chiefLine?.text ?? ''
+  const responseWho = encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who
+  const responseSpeaker = encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? ''
   const responseSeat = seats[responseWho === 'ryo' ? 1 : 0]
   const encounterAnchor = responseWho === 'couple' && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 140) - 36 } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
   const responseWidth = Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44, responseSpeaker.length * 12 + 44))
@@ -219,14 +221,14 @@ export function RowingGame({ onExit }: GameScreenProps) {
           aria-label={who === 'shiro' ? '让宇都木士郎划桨' : '让月云了划桨'} {...inputs(who)}>
           <Portrait who={who} masked={who === 'ryo' && Boolean(visit?.masked)} active={who === 'shiro' ? state.shiroAction !== 'rest' : ['push', 'stroke', 'strong', 'reverse'].includes(state.ryoAction)} />
         </button>)}
-        {!dialogue && !encounter && !chiefLine && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
+        {!dialogue && !encounter && !chiefLine && !dailyLine && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
       </div>
     </div>
     {dialogue ? <div className="rowing-dialogue rowing-response rowing-evening-response" role="status" data-speaker={dialogue.who} data-below={bubbleBelow}
       style={{ left: bubbleLeft, top: bubbleY, width: bubbleWidth, '--row-tail-x': `${Math.max(18, Math.min(bubbleWidth - 18, speakerSeat.x - bubbleLeft))}px` } as CSSProperties}>
       <span>{dialogue.speaker}</span><p>{dialogue.text}</p>
     </div> : null}
-    {!dialogue && response ? <div ref={responseElement} className={`rowing-dialogue rowing-response ${encounter ? 'rowing-collision-response' : 'rowing-chief-response'}`} role="status" data-speaker={responseWho} data-below={responsePosition.below}
+    {!dialogue && response ? <div ref={responseElement} className={`rowing-dialogue rowing-response ${encounter ? 'rowing-collision-response' : dailyLine ? 'rowing-daily-response' : 'rowing-chief-response'}`} role="status" data-chat={dailyChat?.kind} data-speaker={responseWho} data-below={responsePosition.below}
       style={{ left: responsePosition.left, top: responsePosition.top, transform: 'none', width: responseWidth, '--row-tail-x': `${responsePosition.tailX}px` } as CSSProperties}>
       <span>{responseSpeaker}</span><p>{response}</p>
     </div> : null}

@@ -3,6 +3,83 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance, CHIEF_SURNAMES, chiefLines, coupleVisible, createCoupleMotion, moveCouple, riverCenter } from '../src/games/rowing/model.ts'
 import { overlaps, placeResponse, rowingBounds } from '../src/games/rowing/bubble-layout.ts'
+import { createDailyDialogue, tickDailyDialogue, DAILY_LINES, SMALL_TALK, dailyLineSeconds } from '../src/games/rowing/daily-dialogue.ts'
+
+test('daily conversations start on day two, cross each scheduled time once and repeat on later days', () => {
+  for (const day of [0, 1, 2, 7]) for (const [hour, kind] of [[4, 'tired'], [7, 'school'], [12, 'hungry'], [18, 'hungry']]) {
+    const s = createDailyDialogue(), at = day * 1440 + hour * 60
+    tickDailyDialogue(s, at - .1, at, .03, false, () => .99)
+    assert.equal(s.chat?.kind ?? null, day ? kind : null)
+    tickDailyDialogue(s, at, at + .1, .03, false, () => .99)
+    assert.equal(s.pending.length, 0)
+    if (day) assert.deepEqual(s.chat.lines, DAILY_LINES[kind])
+  }
+})
+
+test('school conversation preserves the pauses and every line, gives long sentences more time and clears automatically', () => {
+  assert.deepEqual(DAILY_LINES.school.map(l => l.text), ['……', '了くん你给学校请假了吗？', '答案不是很显然吗？！', '究竟为什么会这样……我的工资……', '我也想知道？？？', '……', '。。。。。。', '……', '。。。。。。', '好了，我给上司发完消息了，接下来帮你给学校打电话吧。', '哦，你快点。'])
+  const s = createDailyDialogue(), at = 1440 + 420
+  tickDailyDialogue(s, at - .1, at, .03, false, () => .99)
+  for (let i = 0; i < DAILY_LINES.school.length; i++) {
+    assert.equal(s.chat.line, i)
+    const seconds = dailyLineSeconds(DAILY_LINES.school[i])
+    assert.ok(seconds >= 3.2)
+    tickDailyDialogue(s, at, at, seconds - .01, false, () => .99)
+    assert.equal(s.chat.line, i)
+    tickDailyDialogue(s, at, at, .02, false, () => .99)
+  }
+  assert.equal(s.chat, null)
+  assert.ok(dailyLineSeconds(DAILY_LINES.school[9]) > 6)
+})
+
+test('scheduled dialogue waits for existing speech and takes priority over random chatter', () => {
+  const s = createDailyDialogue(), at = 1440 + 240
+  tickDailyDialogue(s, at - .1, at, .03, true, () => 0)
+  assert.equal(s.chat, null); assert.equal(s.pending.length, 1)
+  tickDailyDialogue(s, at, at + .1, .03, false, () => 0)
+  assert.equal(s.chat.kind, 'tired')
+  tickDailyDialogue(s, at, at, 10, true, () => 0)
+  assert.equal(s.chat.line, 0); assert.equal(s.chat.age, 0)
+  s.chat = { kind: 'random', lines: SMALL_TALK[0], day: 1, line: 0, age: 0 }
+  tickDailyDialogue(s, 2519.9, 2520, .03, false, () => 0)
+  assert.equal(s.chat.kind, 'hungry')
+})
+
+test('afternoon chatter rolls rarely once per half-hour, respects cooldown and never starts outside its window', () => {
+  for (const at of [30, 780, 1440 + 690, 1440 + 1110]) {
+    const s = createDailyDialogue()
+    tickDailyDialogue(s, at - .1, at, .03, false, () => 0)
+    assert.equal(s.chat, null)
+  }
+  for (let variant = 0; variant < 3; variant++) {
+    const s = createDailyDialogue(), at = 1440 + 780
+    let calls = 0
+    tickDailyDialogue(s, at - .1, at, .03, false, () => calls++ ? (variant + .1) / 3 : .119)
+    assert.deepEqual(s.chat.lines, SMALL_TALK[variant]); assert.equal(calls, 2)
+  }
+  const s = createDailyDialogue(), at = 1440 + 780
+  let rolls = 0
+  tickDailyDialogue(s, at - .1, at, .03, false, () => { rolls++; return .12 })
+  for (let i = 0; i < 100; i++) tickDailyDialogue(s, at + i * .01, at + (i + 1) * .01, .01, false, () => { rolls++; return 0 })
+  assert.equal(rolls, 1); assert.equal(s.chat, null)
+  s.lastFinished = at - 40
+  tickDailyDialogue(s, at - .1, at, .03, false, () => 0)
+  assert.equal(s.chat, null)
+})
+
+test('rowing and clock continue during daily speech; invalid time and a fresh game preserve their existing rules', () => {
+  const g = createRowing(seeded(10)); g.minutes = 1440 + 420 - .01; g.eveningSeen = true; g.effort = true
+  tickRowing(g, .01, () => .99)
+  assert.equal(g.daily.chat.kind, 'school')
+  const time = g.minutes, before = structuredClone(g.daily)
+  for (const dt of [0, -1, NaN, Infinity]) tickRowing(g, dt)
+  assert.deepEqual(g.daily, before)
+  row(g, 'shiro'); row(g, 'ryo', () => 0)
+  assert.equal(g.shiroStrokes, 1); assert.equal(g.ryoStrokes, 1)
+  tickRowing(g, .1, () => .99)
+  assert.ok(g.minutes > time); assert.ok(g.daily.chat.age > 0)
+  assert.equal(createRowing().daily.chat, null)
+})
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
 
@@ -366,7 +443,7 @@ test('collision bubbles and tails avoid the whole rotated boat and portraits at 
       const center = { x: x / 390 * width, y: 50 + 370 / 700 * (height - 140) }
       const seats = [-35, 35].map(sx => ({ x: center.x + (Math.cos(angle) * sx - Math.sin(angle) * 20) * scale, y: center.y + (Math.sin(angle) * sx + Math.cos(angle) * 20) * scale }))
       const bounds = rowingBounds(center, angle, scale, seats)
-      for (const text of [...COMPLAINTS, ...APOLOGIES, ...chiefLines('佐藤').map(line => line.text)]) {
+      for (const text of [...COMPLAINTS, ...APOLOGIES, ...chiefLines('佐藤').map(line => line.text), ...Object.values(DAILY_LINES).flat().map(line => line.text)]) {
         const bubbleWidth = Math.min(300, width - 32, Math.max(112, text.length * 16 + 44))
         const bubbleHeight = 62 + Math.ceil(text.length * 16 / (bubbleWidth - 40)) * 26
         for (const anchor of [seats[0], { x: center.x, y: center.y - 100 }, { x: center.x, y: center.y + 100 }]) {
