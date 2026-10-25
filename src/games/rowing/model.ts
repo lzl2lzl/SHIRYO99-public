@@ -3,6 +3,7 @@ export type RowAction = 'rest' | 'stroke' | 'strong' | 'refuse' | 'push' | 'reve
 export type Period = 'morning' | 'noon' | 'sunset' | 'night'
 export const MINUTES_PER_SECOND = 3
 export const EVENING_MINUTE = 18 * 60
+export const EVENING_LINE_SECONDS = 3.2
 export const STROKE_COOLDOWN = .55
 export const COMPLAINTS = ['啊！', '小心一点，没素质的家伙！', '你撞到我女朋友了！！']
 export const APOLOGIES = ['不好意思。', '真的非常不好意思。', '非常抱歉，我们会注意的。']
@@ -11,7 +12,7 @@ export interface Encounter { boatId: number; complaint: string; apology: string;
 export function riverCenter(y: number) { return 195 + Math.sin(y / 420) * 22 + Math.sin(y / 190) * 12 }
 export const EVENING_LINES = [
   { speaker: '宇都木士郎', who: 'shiro' as const, text: '该回家了，明天还有工作。' },
-  { speaker: '月云了', who: 'ryo' as const, text: '你以为我不想吗？' },
+  { speaker: '月云了', who: 'ryo' as const, text: '你以为我不想吗！！！' },
 ]
 
 export interface RowingState {
@@ -86,7 +87,6 @@ function impulse(state: RowingState, who: Rower, reverse = false, strength = 1) 
 
 /** Independent weighted draws: no sequence, pity counter, or dependence on tapping rhythm. */
 export function row(state: RowingState, who: Rower, random: () => number = Math.random): RowAction | null {
-  if (state.dialogue !== null) return null
   const since = state.elapsed - (who === 'shiro' ? state.lastShiro : state.lastRyo)
   if (since < STROKE_COOLDOWN) return null
   state.taps++
@@ -115,14 +115,6 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
   return 'push'
 }
 
-export function advanceEvening(state: RowingState) {
-  if (state.dialogue === null || state.dialogueAge < .3) return false
-  if (state.dialogue === 0) state.dialogue = 1
-  else { state.dialogue = null; state.effort = true }
-  state.dialogueAge = 0
-  return true
-}
-
 /** Foreground simulation only; a suspended tab never catches up wall-clock time. */
 export function tickRowing(state: RowingState, dt: number, random: () => number = Math.random) {
   if (!Number.isFinite(dt) || dt <= 0) return
@@ -130,12 +122,17 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   state.elapsed += dt
   if (state.elapsed >= state.shiroUntil) state.shiroAction = 'rest'
   if (state.elapsed >= state.ryoUntil) state.ryoAction = 'rest'
-  if (state.dialogue !== null) { state.dialogueAge += dt; return }
+  if (state.dialogue !== null) {
+    state.dialogueAge += dt
+    if (state.dialogueAge >= EVENING_LINE_SECONDS) {
+      state.dialogueAge -= EVENING_LINE_SECONDS
+      if (state.dialogue === 0) { state.dialogue = 1; state.effort = true }
+      else state.dialogue = null
+    }
+  }
   state.minutes += dt * MINUTES_PER_SECOND
   if (!state.eveningSeen && state.minutes >= EVENING_MINUTE) {
-    state.minutes = EVENING_MINUTE
     state.eveningSeen = true; state.dialogue = 0; state.dialogueAge = 0; state.laughUntil = 0; state.encounter = null
-    return
   }
   state.spin *= Math.exp(-.2 * dt)
   state.speed *= Math.exp(-.65 * dt)
@@ -172,7 +169,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       const overlap = 59 - hit.distance
       boat.x += nx * (overlap + .5); boat.y += ny * (overlap + .5)
       state.speed *= .7
-      if (!state.encounter && state.collisionCooldown === 0) {
+      if (state.dialogue === null && !state.encounter && state.collisionCooldown === 0) {
         const pick = (choices: string[]) => choices[Math.min(choices.length - 1, Math.max(0, Math.floor(random() * choices.length)))]
         state.encounter = { boatId: boat.id, complaint: pick(COMPLAINTS), apology: pick(APOLOGIES), age: 0 }
         state.collisionCooldown = 9; state.collisions++; state.laughUntil = 0

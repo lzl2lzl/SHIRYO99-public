@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createRowing, row, tickRowing, advanceEvening, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES } from '../src/games/rowing/model.ts'
+import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES } from '../src/games/rowing/model.ts'
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
 
@@ -58,16 +58,20 @@ test('one-sided effort circles; matched strokes cancel turning and travel furthe
   const spin = circle.spin; wait(circle, 8); assert.ok(circle.spin < spin / 3)
 })
 
-test('18:00 starts exactly two manual lines; only final confirmation changes behavior', () => {
-  const g = createRowing(); g.minutes = 1079.9; tickRowing(g, .1)
-  assert.equal(g.minutes, 1080); assert.equal(g.dialogue, 0)
-  assert.deepEqual(EVENING_LINES.map(line => line.text), ['该回家了，明天还有工作。', '你以为我不想吗？'])
-  assert.equal(advanceEvening(g), false)
-  wait(g, 20); assert.equal(g.dialogue, 0); assert.equal(g.minutes, 1080)
-  assert.equal(row(g, 'shiro'), null); assert.equal(row(g, 'ryo'), null)
-  assert.equal(advanceEvening(g), true); assert.equal(g.dialogue, 1); assert.equal(g.effort, false)
-  assert.equal(advanceEvening(g), false)
-  wait(g, .4); assert.equal(advanceEvening(g), true); assert.equal(g.effort, true)
+test('evening lines expire automatically while time, movement and both rowers continue', () => {
+  const g = createRowing(); g.couples = []; g.minutes = 1079.9; tickRowing(g, .1)
+  assert.ok(g.minutes > 1080); assert.equal(g.dialogue, 0)
+  assert.deepEqual(EVENING_LINES.map(line => line.text), ['该回家了，明天还有工作。', '你以为我不想吗！！！'])
+  const startY = g.y, startTime = g.minutes
+  for (let i = 0; i < 5; i++) {
+    assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(row(g, 'ryo', () => .2), 'stroke'); wait(g, .6)
+  }
+  assert.equal(g.dialogue, 0); assert.ok(g.minutes > startTime); assert.ok(g.y > startY)
+  assert.equal(g.effort, false)
+  wait(g, .3); assert.equal(g.dialogue, 1); assert.equal(g.effort, true)
+  assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(row(g, 'ryo', () => .9), 'reverse')
+  wait(g, 3.2); assert.equal(g.dialogue, null); assert.equal(g.effort, true)
+  assert.ok(g.minutes > 1098); assert.ok(g.cameraY > 0)
 })
 
 test('evening effort always rows, reverse strokes worsen Shiro-side spinning, never refuses or pushes', () => {
@@ -130,6 +134,8 @@ test('night scene takes precedence over collision speech and distant boats recyc
   tickRowing(g, .01); assert.ok(g.encounter)
   g.minutes = 1079.99; tickRowing(g, .01)
   assert.equal(g.dialogue, 0); assert.equal(g.encounter, null)
+  g.couples[0].x = g.x; g.couples[0].y = g.y + 90
+  tickRowing(g, .1); assert.equal(g.encounter, null); assert.ok(g.minutes > 1080)
   const trip = createRowing(); trip.y = 5000; trip.cameraY = 4630
   tickRowing(trip, .01)
   assert.equal(trip.couples.length, 3); assert.ok(trip.couples.every(b => b.id >= 3 && b.y > trip.cameraY + 700))
