@@ -344,8 +344,10 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       }
     }
   }
-  if (!state.calendar.chat && !state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && chiefHours(state.minutes)) {
-    const firstNight = state.minutes < 1440
+  const firstNight = state.minutes < 1440
+  // The first encounter waits until around 22:00, after the existing go-home exchange.
+  const chiefWindow = firstNight ? state.minutes >= EVENING_MINUTE && state.minutes < 23.5 * 60 : chiefHours(state.minutes)
+  if (!state.calendar.chat && !state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && chiefWindow) {
     const boat = state.couples.filter(candidate => coupleVisible(candidate, state.cameraY, state.cameraX)
       && (firstNight ? !state.firstChiefSeen : candidate.chiefSurname && !candidate.chiefGreeted))
       .sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))[0]

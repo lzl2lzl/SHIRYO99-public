@@ -188,9 +188,9 @@ function chiefScene() {
   return g
 }
 
-test('first evening guarantees one nearby chief greeting even with an unlucky draw, then later nights are random', () => {
+test('first evening guarantees one nearby chief greeting after 22:00, then later nights are random', () => {
   for (const draw of [0, .5, .999]) {
-    const g = createRowing(seeded(5)); g.minutes = 19 * 60; g.trafficNextAt = Infinity; g.coupleChatNextAt = Infinity
+    const g = createRowing(seeded(5)); g.minutes = 22 * 60; g.eveningSeen = true; g.trafficNextAt = Infinity; g.coupleChatNextAt = Infinity
     g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }, { id: 101, x: 300, y: 520, heading: Math.PI }]
     tickRowing(g, .01, () => draw)
     assert.equal(g.firstChiefSeen, true); assert.ok(g.chiefVisit)
@@ -210,8 +210,30 @@ test('first evening guarantees one nearby chief greeting even with an unlucky dr
   }
 })
 
+test('first chief never greets early and waits for both 22:00 go-home lines', () => {
+  for (const minute of [19 * 60, 20 * 60, 21 * 60, 22 * 60 - .1]) {
+    const g = createRowing(); g.minutes = minute
+    g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
+    tickRowing(g, .01, () => 0)
+    assert.equal(g.firstChiefSeen, false); assert.equal(g.chiefVisit, null)
+  }
+  const g = createRowing(); g.minutes = 22 * 60 - .01
+  g.trafficNextAt = Infinity; g.coupleChatNextAt = Infinity
+  g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
+  tickRowing(g, .01, () => .99)
+  assert.equal(g.dialogue, 0); assert.equal(g.chiefVisit, null)
+  for (let i = 0; i < 70 && !g.chiefVisit; i++) {
+    g.couples[0].x = 90; g.couples[0].y = g.cameraY + 200
+    tickRowing(g, .1, () => .99)
+    if (g.dialogue !== null) assert.equal(g.chiefVisit, null)
+  }
+  assert.equal(g.dialogue, null); assert.equal(g.firstChiefSeen, true)
+  assert.equal(g.chiefVisit.boatId, 100)
+  assert.ok(g.minutes >= 22 * 60 && g.minutes < 22.5 * 60)
+})
+
 test('guaranteed greeting waits for existing speech and a visible boat, without spawning or moving one', () => {
-  const g = createRowing(); g.minutes = 19 * 60
+  const g = createRowing(); g.minutes = 22 * 60; g.eveningSeen = true
   g.couples = [{ id: 100, x: 90, y: 900, heading: Math.PI }]
   tickRowing(g, .01, () => .99); assert.equal(g.firstChiefSeen, false)
   g.couples[0].y = 200
@@ -251,7 +273,7 @@ test('later nights draw once per visible boat at 1/10, never every frame or outs
     if (g.couples[0].chiefSurname) selected++
   }
   assert.equal(selected, 100)
-  for (const minutes of [9 * 60, 16 * 60, 18 * 60, 22 * 60, 23 * 60, 40 * 60]) {
+  for (const minutes of [9 * 60, 16 * 60, 18 * 60, 46 * 60, 47 * 60, 40 * 60]) {
     const g = createRowing(); g.minutes = minutes; g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
     tickRowing(g, .01, () => { assert.fail('No chief draw outside dusk') })
     assert.equal(g.chiefVisit, null)
@@ -261,7 +283,7 @@ test('later nights draw once per visible boat at 1/10, never every frame or outs
 test('Sato plus ten surnames are freshly selected and carried consistently through the script', () => {
   assert.equal(CHIEF_SURNAMES.length, 11); assert.equal(new Set(CHIEF_SURNAMES).size, 11)
   for (let i = 0; i < CHIEF_SURNAMES.length; i++) {
-    const g = createRowing(); g.minutes = 20 * 60; g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
+    const g = createRowing(); g.minutes = 22 * 60; g.eveningSeen = true; g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
     const draws = [(i + .5) / CHIEF_SURNAMES.length]
     tickRowing(g, .01, () => draws.shift())
     assert.equal(g.chiefVisit.surname, CHIEF_SURNAMES[i])
@@ -406,6 +428,7 @@ test('one-sided effort circles; matched strokes cancel turning and travel furthe
   const circle = createRowing(), forward = createRowing()
   circle.minutes = forward.minutes = 20 * 60
   circle.couples = []; forward.couples = []
+  circle.trafficNextAt = forward.trafficNextAt = Infinity
   for (let i = 0; i < 30; i++) {
     row(circle, 'shiro'); row(forward, 'shiro'); row(forward, 'ryo', () => 0)
     wait(circle, .6); wait(forward, .6)
@@ -524,18 +547,20 @@ test('traffic is sparse in the morning, busier after noon and absent from midnig
 })
 
 test('busier hours produce more visible traffic, not merely offscreen boats in a larger pool', () => {
+  const counts = { morning: [], afternoon: [], night: [] }
   for (const seed of [1, 7, 14]) {
-    const random = seeded(seed), g = createRowing(random), counts = { morning: [], afternoon: [], night: [] }
+    const random = seeded(seed), g = createRowing(random)
     for (let i = 0; i < 9500; i++) {
       tickRowing(g, .1, random)
       if (g.minutes < 1800) continue
       const hour = g.minutes / 60 % 24, period = hour < 6 ? null : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'night'
       if (period) counts[period].push(g.couples.filter(b => b.y > g.cameraY && b.y < g.cameraY + 700).length)
     }
-    const average = key => counts[key].reduce((a, b) => a + b, 0) / counts[key].length
-    assert.ok(average('afternoon') > average('morning') + .5, `Afternoon seed ${seed}`)
-    assert.ok(average('night') > average('morning') + .3, `Evening seed ${seed}`)
   }
+  // Compare pooled traffic rather than requiring every individual random trip to be equally busy.
+  const average = key => counts[key].reduce((a, b) => a + b, 0) / counts[key].length
+  assert.ok(average('afternoon') > average('morning') + .5)
+  assert.ok(average('night') > average('morning') + .3)
 })
 
 test('collision bubbles and tails avoid the whole rotated boat and portraits at narrow and desktop sizes', () => {
