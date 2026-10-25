@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance, CHIEF_SURNAMES, chiefLines, coupleVisible, createCoupleMotion, moveCouple, riverCenter } from '../src/games/rowing/model.ts'
 import { overlaps, placeResponse, rowingBounds } from '../src/games/rowing/bubble-layout.ts'
+import { hullContact, coupleTarget, departCouple, createCouple } from '../src/games/rowing/couples.ts'
+import { COUPLE_LINES, pickCoupleChat, coupleLineSeconds } from '../src/games/rowing/couple-dialogue.ts'
 import { clockDisplayAt } from '../src/games/rowing/model.ts'
 import { createDailyDialogue, tickDailyDialogue, DAILY_LINES, SMALL_TALK, dailyLineSeconds } from '../src/games/rowing/daily-dialogue.ts'
 
@@ -119,62 +121,61 @@ test('shore opening freezes the clock through boarding and two automatic announc
 function seeded(seed) {
   return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296 }
 }
-function hullGap(boat, player) {
-  return Math.min(...[-48, 0, 48].map(offset => Math.hypot(boat.x - player.x - Math.sin(player.heading) * offset, boat.y - player.y + Math.cos(player.heading) * offset)))
-}
+function hullGap(boat, player) { return hullContact(boat, player).distance }
 
 test('each couple receives stable random speed, rhythm and route; new games redraw them', () => {
   const a = createRowing(seeded(7)), b = createRowing(seeded(8))
   for (const key of ['speed', 'frequency', 'pulseFrequency', 'phase', 'lane', 'amplitude']) {
-    assert.equal(new Set(a.couples.map(boat => boat.motion[key])).size, 8)
+    assert.equal(new Set(a.couples.map(boat => boat.motion[key])).size, COUPLE_COUNT)
   }
   assert.notDeepEqual(a.couples.map(b => b.motion), b.couples.map(b => b.motion))
   const start = new Map(a.couples.map(boat => [boat.id, structuredClone(boat)]))
   for (let i = 0; i < 100; i++) tickRowing(a, .1, () => .99)
-  assert.ok(a.couples.filter(boat => start.has(boat.id)).length >= 7)
+  assert.ok(a.couples.filter(boat => start.has(boat.id)).length >= 3)
   a.couples.forEach(boat => {
     const before = start.get(boat.id)
-    if (before) { assert.deepEqual(boat.motion, before.motion); assert.ok(Math.hypot(boat.x - before.x, boat.y - before.y) > 2) }
+    if (before) { assert.deepEqual({ ...boat.motion, direction: 0 }, { ...before.motion, direction: 0 }); assert.ok(Math.hypot(boat.x - before.x, boat.y - before.y) > 2) }
   })
 })
 
 test('couples keep moving slowly on different paths and never steer into a stationary player', () => {
   for (let seed = 0; seed < 64; seed++) {
     const angle = seed * Math.PI / 8, player = { x: riverCenter(370), y: 370, heading: seed * .37 }
-    const boat = { id: seed, x: player.x + Math.cos(angle) * 110, y: player.y + Math.sin(angle) * 110, heading: Math.PI, motion: createCoupleMotion(seeded(seed + 12)) }
+    const boat = { id: seed, x: player.x + Math.cos(angle) * 230, y: player.y + Math.sin(angle) * 230, heading: Math.PI, motion: createCoupleMotion(seeded(seed + 12)) }
     let travelled = 0
     const initialGap = hullGap(boat, player)
     for (let i = 0; i < 600; i++) {
       const before = { x: boat.x, y: boat.y, heading: boat.heading }
       moveCouple(boat, player, i * .1, .1)
       const step = Math.hypot(boat.x - before.x, boat.y - before.y)
-      assert.ok(step <= .80000001, 'NPC speed must be capped at 8 world units/second')
-      assert.ok(Math.abs(boat.heading - before.heading) <= .06500001, 'No sudden turns')
-      assert.ok(hullGap(boat, player) >= Math.min(88, initialGap) - 1e-8, 'Autonomous motion must preserve visual clearance around the player hull')
+      assert.ok(step <= 3.50000001, 'NPC speed must remain bounded')
+      assert.ok(Math.abs(boat.heading - before.heading) <= .07000001, 'No sudden turns')
+      assert.ok(hullGap(boat, player) >= Math.min(108, initialGap) - 1e-8, 'Autonomous motion must preserve visual clearance around the player hull')
       travelled += step
     }
     assert.ok(travelled > 20, `Avoidance must not make the boat permanently motionless: seed ${seed}, distance ${travelled}`)
   }
 })
 
-test('passive drifting does not provoke collisions, while paddling into a couple still does', () => {
+test('ordinary boats avoid a drifting player; actual contact makes a boat leave', () => {
   for (let seed = 1; seed <= 20; seed++) {
-    const g = createRowing(seeded(seed))
+    const g = createRowing(seeded(seed)); g.trafficNextAt = Infinity
+    g.couples = [createCouple(99, g.y + 300, seeded(seed))]; g.couples[0].motion.style = 'steady'
     for (let i = 0; i < 600; i++) tickRowing(g, .1, () => .99)
-    assert.equal(g.collisions, 0, `idle river seed ${seed}`)
+    assert.equal(g.collisions, 0, 'ordinary idle river seed ' + seed)
   }
   const g = createRowing(seeded(4)); g.minutes = 20 * 60
-  g.couples = [{ id: 99, x: g.x, y: g.y + 108.1, heading: Math.PI, motion: createCoupleMotion(seeded(5)) }]
-  assert.ok(hullGap(g.couples[0], g) > 59)
-  row(g, 'shiro'); row(g, 'ryo', () => .01); tickRowing(g, .1, () => .2)
+  g.couples = [{ id: 99, x: g.x, y: g.y + 180, heading: Math.PI, motion: createCoupleMotion(() => .2) }]
+  tickRowing(g, .1, () => .2)
   assert.equal(g.collisions, 1); assert.equal(g.encounter.complaint, '啊！')
+  assert.equal(g.couples[0].departing, true); assert.equal(g.couples[0].departureReason, 'collision')
 })
 
 test('invalid time never moves couples; recycled boats receive new motion without keeping a chief identity', () => {
   const g = createRowing(seeded(3)), boat = g.couples[0], original = structuredClone(boat)
   for (const dt of [NaN, Infinity, 0, -1]) moveCouple(boat, g, 0, dt)
   assert.deepEqual(boat, original)
-  boat.y = g.cameraY - 400; boat.chiefSurname = '佐藤'; boat.chiefChecked = true
+  g.trafficNextAt = 0; boat.y = g.cameraY - 400; boat.chiefSurname = '佐藤'; boat.chiefChecked = true
   tickRowing(g, .01, () => .99)
   assert.notEqual(g.couples[0].id, boat.id); assert.notDeepEqual(g.couples[0].motion, boat.motion)
   assert.equal(g.couples[0].chiefSurname, undefined)
@@ -189,7 +190,7 @@ function chiefScene() {
 
 test('first evening guarantees one nearby chief greeting even with an unlucky draw, then later nights are random', () => {
   for (const draw of [0, .5, .999]) {
-    const g = createRowing(seeded(5)); g.minutes = 19 * 60
+    const g = createRowing(seeded(5)); g.minutes = 19 * 60; g.trafficNextAt = Infinity; g.coupleChatNextAt = Infinity
     g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }, { id: 101, x: 300, y: 520, heading: Math.PI }]
     tickRowing(g, .01, () => draw)
     assert.equal(g.firstChiefSeen, true); assert.ok(g.chiefVisit)
@@ -276,7 +277,7 @@ test('chief lines auto advance in exact order; face stays clear through ! then s
   for (let line = 0; line < 9; line++) {
     assert.equal(g.chiefVisit.line, line); assert.equal(g.chiefVisit.masked, line >= 2)
     const start = g.elapsed
-    while (g.chiefVisit.line === line && g.elapsed - start < 4) tickRowing(g, .05, () => .9)
+    while (g.chiefVisit.line === line && g.elapsed - start < 4) { g.couples[0].y = g.cameraY + 200; tickRowing(g, .05, () => .9) }
     assert.ok(g.elapsed > start)
   }
   assert.equal(g.chiefVisit.done, true); assert.equal(g.chiefVisit.masked, true)
@@ -299,14 +300,14 @@ test('chief boat leaving any edge cancels remaining lines and mosaic, including 
   for (const line of [0, 1, 2, 9]) for (const direction of ['top', 'bottom', 'left', 'right']) {
     const g = chiefScene(); Object.assign(g.chiefVisit, { line, masked: line >= 2, done: line === 9 })
     const boat = g.couples[0]
-    if (direction === 'top') boat.y = g.cameraY - 60
-    if (direction === 'bottom') boat.y = g.cameraY + 760
-    if (direction === 'left') boat.x = -60
-    if (direction === 'right') boat.x = 450
+    if (direction === 'top') boat.y = g.cameraY - 180
+    if (direction === 'bottom') boat.y = g.cameraY + 880
+    if (direction === 'left') boat.x = -180
+    if (direction === 'right') boat.x = 570
     tickRowing(g, .01, () => .99)
     assert.equal(g.chiefVisit, null); assert.equal(coupleVisible(boat, g.cameraY), false)
   }
-  const g = chiefScene(); g.couples[0].y = g.cameraY - 39
+  const g = chiefScene(); g.couples[0].y = g.cameraY - 159
   assert.equal(coupleVisible(g.couples[0], g.cameraY), true)
   tickRowing(g, .01, () => .99); assert.ok(g.chiefVisit, 'Keep the visit while part of the boat is still visible')
 })
@@ -317,14 +318,14 @@ test('chief collision always says ah and uses the most polite apology, even befo
     g.couples = [{ id: 100, x: g.x, y: g.y + 90, heading: Math.PI, chiefChecked: true, chiefSurname: '田中' }]
     tickRowing(g, .01, () => draw)
     assert.equal(g.encounter.complaint, '啊！'); assert.equal(g.encounter.apology, '非常抱歉，我们会注意的。')
-    g.couples[0].y = g.cameraY - 60; tickRowing(g, .01, () => draw)
+    g.couples[0].y = g.cameraY - 180; tickRowing(g, .01, () => draw)
     assert.equal(g.encounter, null); assert.equal(g.chiefVisit, null)
   }
 })
 
 test('recycled boats get a fresh chief draw and no visit survives recycling or a new game', () => {
   const g = chiefScene(); const oldId = g.couples[0].id
-  g.couples[0].y = -400; tickRowing(g, .01, () => .99)
+  g.trafficNextAt = 0; g.couples[0].y = -400; tickRowing(g, .01, () => .99)
   assert.equal(g.chiefVisit, null); assert.notEqual(g.couples[0].id, oldId); assert.equal(g.couples[0].chiefChecked, undefined)
   g.couples[0].y = g.cameraY + 200
   const draws = [.01, .999]; tickRowing(g, .01, () => draws.shift())
@@ -467,7 +468,7 @@ test('invalid time is ignored; large delta cannot catch up a background tab; tra
 
 test('river camera follows unbounded forward and backward travel instead of an invisible wall', () => {
   for (const heading of [0, Math.PI]) {
-    const g = createRowing(); g.minutes = 20 * 60; g.couples = []; g.heading = heading
+    const g = createRowing(); g.minutes = 20 * 60; g.couples = []; g.trafficNextAt = Infinity; g.heading = heading
     for (let i = 0; i < 120; i++) { row(g, 'shiro'); row(g, 'ryo', () => 0); wait(g, .6) }
     assert.ok(heading === 0 ? g.y < -1000 : g.y > 2000)
     assert.ok(Math.abs(g.y - g.cameraY - 370) < 22)
@@ -477,7 +478,7 @@ test('river camera follows unbounded forward and backward travel instead of an i
 
 test('only hull contact starts a random complaint then apology; exchanges expire without blocking rowing', () => {
   for (const [index, draw] of [[0, .1], [1, .5], [2, .9]]) {
-    const g = createRowing(); g.couples = [{ id: 5, x: g.x, y: g.y + 180, heading: Math.PI }]
+    const g = createRowing(); g.couples = [{ id: 5, x: g.x, y: g.y + 260, heading: Math.PI, motion: createCoupleMotion(() => .2) }]
     tickRowing(g, .01, () => draw); assert.equal(g.encounter, null)
     g.couples[0].y = g.y + 90
     tickRowing(g, .01, () => draw)
@@ -485,7 +486,7 @@ test('only hull contact starts a random complaint then apology; exchanges expire
     assert.equal(g.encounter.boatId, 5); assert.equal(g.collisions, 1)
     assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(g.dialogue, null)
     wait(g, 2.7); assert.ok(g.encounter.age >= 2.6); assert.equal(g.collisions, 1)
-    wait(g, 3.2); assert.equal(g.encounter, null); assert.equal(g.collisions, 1)
+    wait(g, 4); assert.equal(g.encounter, null); assert.equal(g.collisions, 1)
   }
 })
 
@@ -497,23 +498,26 @@ test('night scene takes precedence over collision speech and distant boats recyc
   assert.equal(g.dialogue, 0); assert.equal(g.encounter, null)
   g.couples[0].x = g.x; g.couples[0].y = g.y + 90
   tickRowing(g, .1); assert.equal(g.encounter, null); assert.ok(g.minutes > 1320)
-  const trip = createRowing(); trip.y = 5000; trip.cameraY = 4630
+  const trip = createRowing(); trip.trafficNextAt = 0; trip.y = 5000; trip.cameraY = 4630
   tickRowing(trip, .01)
-  assert.equal(trip.couples.length, COUPLE_COUNT)
+  assert.equal(trip.couples.length, 1)
   assert.ok(trip.couples.every(b => b.id >= COUPLE_COUNT && b.y >= trip.cameraY - 200 && b.y <= trip.cameraY + 1300))
 })
 
-test('more couples stay distributed around the moving camera without growing the pool', () => {
+test('traffic is sparse in the morning, busier after noon and absent from midnight to six', () => {
+  for (const [hour, count] of [[0, 0], [4, 0], [5.99, 0], [6, 3], [11, 3], [12, 7], [18, 7], [22, 7], [23, 3], [23.5, 0]]) assert.equal(coupleTarget(hour * 60), count)
+  for (const hour of [0, 4, 5.5]) {
+    const g = createRowing(); g.minutes = 1440 + hour * 60; g.eveningSeen = true
+    g.trafficNextAt = Infinity; tickRowing(g, .01)
+    assert.equal(g.couples.length, 0); assert.equal(g.coupleChat, null); assert.equal(g.chiefVisit, null)
+  }
   const g = createRowing()
-  assert.equal(g.couples.length, 8)
-  assert.ok(g.couples.filter(b => b.y >= 0 && b.y <= 700).length >= 4)
-  tickRowing(g, .01); assert.equal(g.collisions, 0)
+  assert.equal(g.couples.length, COUPLE_COUNT)
   for (const y of [5000, -3000, 10000, 370]) {
-    g.y = y; g.cameraY = y - 370; g.encounter = null
-    tickRowing(g, .01)
-    assert.equal(g.couples.length, 8)
-    assert.equal(new Set(g.couples.map(b => b.id)).size, 8)
-    assert.ok(g.couples.every(b => b.y >= g.cameraY - 200 && b.y <= g.cameraY + 1300))
+    g.y = y; g.cameraY = y - 370; g.encounter = null; g.trafficNextAt = 0
+    tickRowing(g, .01, () => .2)
+    assert.equal(g.couples.length, 1, 'Replacement traffic enters gradually, never all at once')
+    assert.equal(coupleVisible(g.couples[0], g.cameraY), false, 'New arrivals begin outside the view')
   }
 })
 
@@ -521,10 +525,10 @@ test('collision bubbles and tails avoid the whole rotated boat and portraits at 
   for (const width of [320, 390, 560]) for (const height of [640, 844]) {
     const scale = Math.max(180, Math.min(230, width * .48)) / 220
     for (const x of [95, 195, 300]) for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 12) {
-      const center = { x: x / 390 * width, y: 50 + 370 / 700 * (height - 140) }
+      const center = { x: x / 390 * width, y: 50 + 370 / 700 * (height - 50) }
       const seats = [-35, 35].map(sx => ({ x: center.x + (Math.cos(angle) * sx - Math.sin(angle) * 20) * scale, y: center.y + (Math.sin(angle) * sx + Math.cos(angle) * 20) * scale }))
       const bounds = rowingBounds(center, angle, scale, seats)
-      for (const text of [...COMPLAINTS, ...APOLOGIES, ...chiefLines('佐藤').map(line => line.text), ...Object.values(DAILY_LINES).flat().map(line => line.text)]) {
+      for (const text of [...COMPLAINTS, ...APOLOGIES, ...chiefLines('佐藤').map(line => line.text), ...Object.values(DAILY_LINES).flat().map(line => line.text), ...Object.values(COUPLE_LINES).flat(2)]) {
         const bubbleWidth = Math.min(300, width - 32, Math.max(112, text.length * 16 + 44))
         const bubbleHeight = 62 + Math.ceil(text.length * 16 / (bubbleWidth - 40)) * 26
         for (const anchor of [seats[0], { x: center.x, y: center.y - 100 }, { x: center.x, y: center.y + 100 }]) {
@@ -537,6 +541,68 @@ test('collision bubbles and tails avoid the whole rotated boat and portraits at 
       }
     }
   }
+})
+
+test('couple dialogue follows time and rowing style, preserving complete exchanges', () => {
+  const boat = createCouple(1, 100, () => .2)
+  for (const [hour, draw, stopped, style, kind] of [
+    [18, .2, false, 'steady', 'sunset'], [20, .2, false, 'steady', 'night'],
+    [10, .2, true, 'resting', 'resting'], [14, .8, false, 'wobbly', 'wobbly'],
+    [14, .8, false, 'fast', 'fast'], [14, .8, false, 'steady', 'steady'],
+  ]) {
+    boat.stopped = stopped; boat.motion.style = style
+    const chat = pickCoupleChat(boat, hour * 60, () => draw)
+    assert.equal(chat.kind, kind); assert.ok(COUPLE_LINES[kind].includes(chat.lines))
+    chat.lines.forEach(text => assert.ok(coupleLineSeconds(text) >= 3.2))
+  }
+  assert.deepEqual(COUPLE_LINES.sunset[0], ['你看，太阳快落下去了。', '嗯。', '你根本没看嘛。', '我在看你呀~'])
+  assert.deepEqual(COUPLE_LINES.night[0], ['今晚月色真美。', '你刚才已经说过啦。'])
+  assert.deepEqual(COUPLE_LINES.fast[0], ['亲爱的~慢一点嘛！', '不是你说想一起去吃晚饭吗？'])
+  boat.departing = true
+  assert.equal(pickCoupleChat(boat, 18 * 60, () => .2).kind, 'leaving')
+})
+
+test('resting, fast, wavering and distracted couples have distinct strokes and movement', () => {
+  const player = { x: 195, y: -1000, heading: 0 }
+  const resting = createCouple(1, 100, () => .45); resting.motion.phase = 0
+  const fast = createCouple(2, 100, () => .8), steady = createCouple(3, 100, () => .2)
+  for (const b of [resting, fast, steady]) {
+    b.x = riverCenter(b.y) + b.motion.lane; b.motion.direction = 1
+    for (let i = 0; i < 30; i++) moveCouple(b, player, i * .1, .1)
+  }
+  assert.equal(resting.stopped, true); assert.ok(resting.y < 104)
+  assert.ok(fast.y - 100 > (steady.y - 100) * 1.4)
+  assert.ok(createCoupleMotion(() => .6).amplitude > createCoupleMotion(() => .2).amplitude)
+  assert.equal(createCoupleMotion(() => .99).style, 'distracted')
+})
+
+test('circling makes nearby couples leave persistently; accidental contact uses its own line', () => {
+  const g = createRowing(() => .2), boat = createCouple(99, g.y + 200, () => .2)
+  moveCouple(boat, { ...g, spin: 2 }, 1, .1)
+  assert.equal(boat.departureReason, 'spin')
+  const direction = boat.motion.direction
+  departCouple(boat, { ...g, y: boat.y + 100 }, 'collision')
+  assert.equal(boat.motion.direction, direction)
+  g.couples = [{ ...createCouple(100, g.y + 170, () => .99), x: g.x, heading: Math.PI }]
+  tickRowing(g, .01, () => .2)
+  assert.equal(g.encounter.complaint, '别一直看我嘛，看前面~哎呀，要撞上了啦！')
+  assert.equal(g.couples[0].accidentalContact, true); assert.equal(g.couples[0].departureReason, 'collision')
+  assert.equal(row(g, 'shiro'), 'stroke')
+})
+
+test('ambient couples never overlap main speech and disappear with the speaking boat', () => {
+  for (const priority of ['chief', 'daily', 'night', 'leaving']) {
+    const g = createRowing(() => .2); g.trafficNextAt = Infinity; g.coupleChatNextAt = 0
+    const boat = createCouple(99, 140, () => .2); g.couples = [boat]
+    tickRowing(g, .01, () => .2); assert.ok(g.coupleChat)
+    if (priority === 'chief') g.chiefVisit = { boatId: 99, surname: '佐藤', line: 0, age: 0, masked: false, done: false }
+    if (priority === 'daily') g.daily.chat = { kind: 'school', lines: DAILY_LINES.school, day: 1, line: 0, age: 0 }
+    if (priority === 'night') { g.dialogue = 0; g.dialogueAge = 0 }
+    if (priority === 'leaving') boat.y = -500
+    tickRowing(g, .01, () => .2); assert.equal(g.coupleChat, null)
+    assert.equal(row(g, 'shiro'), 'stroke'); assert.ok(g.minutes > 1080)
+  }
+  assert.equal(createRowing().coupleChat, null)
 })
 
 test('UI references approved portraits and stops animation while hidden or entering', () => {

@@ -20,9 +20,6 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-bank-inner { fill: var(--row-green); transition: fill 2s; }
 .rowing-waterline { fill: none; stroke: var(--row-ink); stroke-width: 1; opacity: .1; }
 .rowing-trail { fill: none; stroke: #ecf3e7; stroke-width: 1.3; }
-.rowing-couple ellipse { fill: #e6d5b9; stroke: #8d7d75; stroke-width: 2; }
-.rowing-couple .rowing-couple-inner { fill: #b99e86; stroke: none; }
-.rowing-couple-paddles { stroke: #8d7d75; stroke-width: 3; stroke-linecap: round; }
 .rowing-couple-heart { fill: #f2bccd; stroke: #8e5e76; stroke-width: 1; }
 .rowing-reeds path { fill: none; stroke: #74998a; stroke-width: 2; stroke-linecap: round; }
 .rowing-reeds circle { fill: #eedbdc; }

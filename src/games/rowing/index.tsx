@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type KeyboardEvent } from 'react'
 import type { GameDefinition, GameScreenProps } from '../../engine/types'
-import { chiefLines, clockDisplayAt, createRowing, EVENING_LINES, periodAt, row, tickRowing, type Rower } from './model'
+import { chiefLines, clockDisplayAt, createRowing, EVENING_LINES, complaintSeconds, periodAt, row, tickRowing, type Rower } from './model'
 import { bankPath, bankX, riverDetails } from './scenery'
 import { placeResponse, rowingBounds } from './bubble-layout'
 import './rowing.css'
@@ -9,6 +9,16 @@ import './rowing.css'
 const ASSETS = `${import.meta.env.BASE_URL}assets/characters/`
 
 const MOSAIC_COLORS = ['#a68bc6', '#b4a1c9', '#8f7aa9', '#c1b1d1', '#786783', '#ddd0cd', '#b3a8bd', '#9b8ba9']
+function BoatHull() {
+  return <>
+    <ellipse cy="10" rx="71" ry="109" fill="#143e4d" opacity=".12"/>
+    <path d="M0 -111C73 -77 80 17 56 83Q0 112 -56 83C-80 17 -73 -77 0 -111" fill="#9c7961"/>
+    <path d="M0 -103C64 -72 70 14 49 77Q0 99 -49 77C-70 14 -64 -72 0 -103" fill="#dfc6a0"/>
+    <path d="M0 -87C51 -58 59 10 41 64Q0 84 -41 64C-59 10 -51 -58 0 -87" fill="#ae8f73"/>
+    <path d="M0 -72V70M-27 -42V63M27 -42V63" stroke="#c8ab88" strokeWidth="2"/>
+    <path d="M-55 -13H55M-51 46H51" stroke="#e6cfa9" strokeWidth="12"/>
+  </>
+}
 function Portrait({ who, active, masked = false }: { who: Rower; active: boolean; masked?: boolean }) {
   const source = who === 'shiro' ? `shiro/white-${active ? 'b' : 'a'}.png` : `ryo/${active ? 'fishing-no-grapes' : 'no-crown-a'}.png`
   const frame = who === 'shiro' ? '390 88 560 810' : active ? '467 190 566 644' : '96 32 162 178'
@@ -149,13 +159,14 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const chiefLine = visit && !visit.done ? chiefLines(visit.surname)[visit.line] : null
   const dailyChat = state.daily.chat
   const dailyLine = dailyChat?.lines[dailyChat.line]
-  const complaining = Boolean(encounter && encounter.age < 2.6)
-  const couple = state.couples.find(boat => boat.id === (encounter?.boatId ?? visit?.boatId))
-  const response = encounter ? complaining ? encounter.complaint : encounter.apology : dailyLine?.text ?? chiefLine?.text ?? ''
-  const responseWho = encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who
-  const responseSpeaker = encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? ''
+  const coupleChat = state.coupleChat, coupleLine = coupleChat?.lines[coupleChat.line]
+  const complaining = Boolean(encounter && encounter.age < complaintSeconds(encounter))
+  const couple = state.couples.find(boat => boat.id === (encounter?.boatId ?? (chiefLine ? visit?.boatId : coupleChat?.boatId)))
+  const response = encounter ? complaining ? encounter.complaint : encounter.apology : dailyLine?.text ?? chiefLine?.text ?? coupleLine ?? ''
+  const responseWho = encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who ?? (coupleLine ? 'couple' : undefined)
+  const responseSpeaker = encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? (coupleLine ? '周围的情侣' : '')
   const responseSeat = seats[responseWho === 'ryo' ? 1 : 0]
-  const encounterAnchor = responseWho === 'couple' && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 50) - 36 } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
+  const encounterAnchor = responseWho === 'couple' && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 50) - 110 * boatScale } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
   const responseWidth = Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44, responseSpeaker.length * 12 + 44))
   const responseHeight = measuredResponse.text === response && measuredResponse.width === responseWidth ? measuredResponse.height : 62 + Math.ceil(response.length * 16 / (responseWidth - 40)) * 26
   const protectedBoat = rowingBounds({ x: state.x / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) }, radians, boatScale, seats)
@@ -201,24 +212,27 @@ export function RowingGame({ onExit }: GameScreenProps) {
     </svg>
     <div className="rowing-dock" aria-hidden="true" style={{ top: dockY, width: size.width / 2 + 35 * boatScale + 18 }}><i/><i/><i/></div>
     <svg className="rowing-stage" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true">
-      {state.couples.map(boat => {
-        return <g key={boat.id} className="rowing-couple" data-boat={boat.id} data-chief={boat.chiefSurname} transform={`translate(${boat.x} ${boat.y - state.cameraY}) rotate(${boat.heading * 180 / Math.PI})`}>
-          <ellipse rx="23" ry="39"/><ellipse className="rowing-couple-inner" rx="17" ry="31"/>
-          <path className="rowing-couple-paddles" d="M-35 -5L34 8"/>
-          <path className="rowing-couple-heart" transform={`rotate(${-boat.heading * 180 / Math.PI})`} d="M0 11C-4 7 -16 0 -13 -8C-10 -16 -2 -12 0 -7C2 -12 10 -16 13 -8C16 0 4 7 0 11Z"/>
-        </g>
-      })}
       {state.trail.map((p, i) => <ellipse key={i} cx={p.x} cy={p.y - state.cameraY} rx={5 + p.age * 6} ry={2 + p.age * 2} className="rowing-trail" opacity={Math.max(0, (1 - p.age / 3) * .18)} />)}
     </svg>
+    <div className="rowing-boat-layer rowing-couples" aria-hidden="true">
+      {state.couples.map(boat => {
+        const angle = boat.heading * 180 / Math.PI, stroke = reduced || boat.stopped ? 0 : Math.sin(boat.strokePhase ?? 0) * 24
+        return <div key={boat.id} className="rowing-boat rowing-couple" data-boat={boat.id} data-chief={boat.chiefSurname} data-style={boat.motion?.style} data-departing={boat.departing || false} data-stopped={boat.stopped || false}
+          style={{ left: `${boat.x / 390 * 100}%`, top: `${(boat.y - state.cameraY) / 700 * 100}%`, transform: `translate(-50%, -50%) rotate(${angle}deg)` }}>
+          <svg className="rowing-hull" viewBox="-110 -125 220 250"><BoatHull/>
+            <g className="rowing-oar rowing-oar-left" style={{ transform: `rotate(${stroke - 12}deg)` }}><path d="M-22 3L-91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M-77 20L-105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/></g>
+            <g className="rowing-oar rowing-oar-right" style={{ transform: `rotate(${-stroke + 12}deg)` }}><path d="M22 3L91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M77 20L105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/></g>
+            <g transform={`rotate(${-angle})`}>
+              {[-1, 1].map(side => <path key={side} className="rowing-couple-heart" transform={`translate(${side * 18} ${side * 8}) scale(1.3)`} d="M0 11C-4 7 -16 0 -13 -8C-10 -16 -2 -12 0 -7C2 -12 10 -16 13 -8C16 0 4 7 0 11Z"/>)}
+            </g>
+          </svg>
+        </div>
+      })}
+    </div>
     <div className="rowing-boat-layer">
       <div className="rowing-boat" style={{ left: `${state.x / 390 * 100}%`, top: `${(state.y - state.cameraY) / 700 * 100}%` }}>
         <svg className="rowing-hull" viewBox="-110 -125 220 250" aria-hidden="true">
-          <ellipse cy="10" rx="71" ry="109" fill="#143e4d" opacity=".12"/>
-          <path d="M0 -111C73 -77 80 17 56 83Q0 112 -56 83C-80 17 -73 -77 0 -111" fill="#9c7961"/>
-          <path d="M0 -103C64 -72 70 14 49 77Q0 99 -49 77C-70 14 -64 -72 0 -103" fill="#dfc6a0"/>
-          <path d="M0 -87C51 -58 59 10 41 64Q0 84 -41 64C-59 10 -51 -58 0 -87" fill="#ae8f73"/>
-          <path d="M0 -72V70M-27 -42V63M27 -42V63" stroke="#c8ab88" strokeWidth="2"/>
-          <path d="M-55 -13H55M-51 46H51" stroke="#e6cfa9" strokeWidth="12"/>
+          <BoatHull/>
           <g className="rowing-oar rowing-oar-left" data-active={state.shiroAction === 'stroke'} style={{ transform: `rotate(${state.shiroAction === 'stroke' && !reduced ? Math.sin((.7 - (state.shiroUntil - state.elapsed)) / .7 * Math.PI * 2) * 32 : -12}deg)` }}>
             <path d="M-22 3L-91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M-77 20L-105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/>
           </g>
@@ -231,7 +245,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
           aria-label={who === 'shiro' ? '让宇都木士郎划桨' : '让月云了划桨'} {...inputs(who)}>
           <Portrait who={who} masked={who === 'ryo' && Boolean(visit?.masked)} active={who === 'shiro' ? state.shiroAction !== 'rest' : ['push', 'stroke', 'strong', 'reverse', 'miss'].includes(state.ryoAction)} />
         </button>)}
-        {!dialogue && !encounter && !chiefLine && !dailyLine && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
+        {!dialogue && !encounter && !chiefLine && !dailyLine && !coupleLine && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
       </div>
     </div>
     {onShore && shoreSeats.map(seat => <div key={seat.who} className="rowing-shore-person" data-who={seat.who} style={{ left: seat.x, top: seat.y, width: 88 * boatScale, height: 108 * boatScale }}><Portrait who={seat.who} active={false}/></div>)}
@@ -241,7 +255,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
       style={{ left: bubbleLeft, top: bubbleY, width: bubbleWidth, '--row-tail-x': `${Math.max(18, Math.min(bubbleWidth - 18, speakerSeat.x - bubbleLeft))}px` } as CSSProperties}>
       <span>{dialogue.speaker}</span><p>{dialogue.text}</p>
     </div> : null}
-    {!dialogue && response ? <div ref={responseElement} className={`rowing-dialogue rowing-response ${encounter ? 'rowing-collision-response' : dailyLine ? 'rowing-daily-response' : 'rowing-chief-response'}`} role="status" data-chat={dailyChat?.kind} data-speaker={responseWho} data-below={responsePosition.below}
+    {!dialogue && response ? <div ref={responseElement} className={`rowing-dialogue rowing-response ${encounter ? 'rowing-collision-response' : dailyLine ? 'rowing-daily-response' : chiefLine ? 'rowing-chief-response' : 'rowing-couple-response'}`} role="status" data-chat={dailyChat?.kind ?? coupleChat?.kind} data-speaker={responseWho} data-below={responsePosition.below}
       style={{ left: responsePosition.left, top: responsePosition.top, transform: 'none', width: responseWidth, '--row-tail-x': `${responsePosition.tailX}px` } as CSSProperties}>
       <span>{responseSpeaker}</span><p>{response}</p>
     </div> : null}
