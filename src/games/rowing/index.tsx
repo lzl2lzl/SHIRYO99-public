@@ -7,7 +7,6 @@ import './rowing.css'
 
 
 const ASSETS = `${import.meta.env.BASE_URL}assets/characters/`
-const LABELS = { rest: '', stroke: '划桨', strong: '突然使劲', refuse: '不动', push: '推士郎', reverse: '划反了' }
 const PERIODS = { morning: '早上', noon: '午后', sunset: '夕阳', night: '夜晚' }
 
 const MOSAIC_COLORS = ['#a68bc6', '#b4a1c9', '#8f7aa9', '#c1b1d1', '#786783', '#ddd0cd', '#b3a8bd', '#9b8ba9']
@@ -141,7 +140,6 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const roomBelow = Math.max(...seats.map(seat => seat.y)) + 24 + estimatedBubbleHeight < size.height - 126
   const bubbleBelow = roomBelow && (headTop < 210 || speakerSeat.y > otherSeat.y + 16)
   const bubbleY = bubbleBelow ? Math.max(...seats.map(seat => seat.y)) + 24 : headTop - 18
-  const active = state.shiroAction !== 'rest' || state.ryoAction !== 'rest'
   const details = riverDetails(state.cameraY)
   const encounter = state.encounter
   const visit = state.chiefVisit
@@ -244,15 +242,6 @@ export function RowingGame({ onExit }: GameScreenProps) {
       style={{ left: responsePosition.left, top: responsePosition.top, transform: 'none', width: responseWidth, '--row-tail-x': `${responsePosition.tailX}px` } as CSSProperties}>
       <span>{responseSpeaker}</span><p>{response}</p>
     </div> : null}
-    <footer className="rowing-controls" hidden={onShore}>
-      <div className="rowing-paddles">
-        {(['shiro', 'ryo'] as const).map(who => <button key={who} {...inputs(who)} className={`rowing-paddle rowing-paddle-${who}`} data-action={who === 'shiro' ? state.shiroAction : state.ryoAction} data-held={[...held.current.values()].includes(who)}>
-          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M23 4L10 22M10 18l-5 7q-1 2 1 3t3 0l5-7"/></svg>
-          <span>{who === 'shiro' ? '宇都木士郎' : '月云了'}<small aria-live="polite">{LABELS[who === 'shiro' ? state.shiroAction : state.ryoAction] || (who === 'ryo' && state.effort ? '努力中' : '划桨')}</small></span>
-        </button>)}
-      </div>
-      <span className="rowing-turn-hint" aria-hidden="true" style={{ opacity: Math.abs(state.spin) > 1.05 && active ? 1 : 0 }}>↻</span>
-    </footer>
   </main>
 }
 
