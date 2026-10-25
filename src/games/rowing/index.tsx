@@ -13,8 +13,8 @@ const MOSAIC_COLORS = ['#a68bc6', '#b4a1c9', '#8f7aa9', '#c1b1d1', '#786783', '#
 function Portrait({ who, active, masked = false }: { who: Rower; active: boolean; masked?: boolean }) {
   const source = who === 'shiro' ? `shiro/white-${active ? 'b' : 'a'}.png` : `ryo/${active ? 'fishing-no-grapes' : 'no-crown-a'}.png`
   const frame = who === 'shiro' ? '390 88 560 810' : active ? '467 190 566 644' : '96 32 162 178'
-  const width = who === 'shiro' ? 1280 : active ? 1448 : 320
-  const height = who === 'shiro' ? 960 : active ? 1086 : 240
+  const width = who === 'shiro' ? 1280 : active ? 1448 : 300
+  const height = who === 'shiro' ? 960 : active ? 1086 : 225
   return <svg viewBox={frame} width="88" height="108" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
     <image href={ASSETS + source} width={width} height={height} />
     {who === 'ryo' && masked ? <svg className="rowing-face-mosaic" x={active ? 502 : 111} y={active ? 488 : 104} width={active ? 396 : 100} height={active ? 154 : 45} viewBox="0 0 100 40" preserveAspectRatio="none" pointerEvents="none">
@@ -38,7 +38,10 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const state = game.current
   const period = periodAt(state.minutes)
   const dialogue = state.dialogue === null ? null : EVENING_LINES[state.dialogue]
-  const onShore = state.opening !== null && state.opening !== 'guide'
+  const onShore = state.opening === 'ryo' || state.opening === 'shiro' || state.opening === 'boarding'
+  const announcement = state.opening === 'guide' ? '点击人物' : state.opening === 'guide-start' ? '开始划船' : null
+  const announcementDuration = state.opening === 'guide' ? 2 : 1.8
+  const announcementOpacity = reduced ? 1 : Math.max(0, Math.min(1, state.openingAge / .25, (announcementDuration - state.openingAge) / .35))
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }))
@@ -74,7 +77,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     const keyDown = (event: globalThis.KeyboardEvent) => {
       if (event.altKey || event.ctrlKey || event.metaKey || event.repeat || document.hidden || scene.current?.closest('[inert]')) return
       const who = event.code === 'KeyA' ? 'shiro' : event.code === 'KeyL' ? 'ryo' : null
-      if (!who || (game.current.opening && game.current.opening !== 'guide')) return
+      if (!who || game.current.opening) return
       event.preventDefault(); held.current.set(`key:${event.code}`, who); row(game.current, who)
     }
     const keyUp = (event: globalThis.KeyboardEvent) => held.current.delete(`key:${event.code}`)
@@ -96,7 +99,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
   }
   const inputs = (who: Rower) => ({
     onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0 || (game.current.opening && game.current.opening !== 'guide')) return
+      if (event.button !== 0 || game.current.opening) return
       event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
       held.current.set(`pointer:${event.pointerId}`, who); paddle(who)
     },
@@ -122,13 +125,13 @@ export function RowingGame({ onExit }: GameScreenProps) {
     const depth = Math.sin(radians) * x + Math.cos(radians) * 20
     return { who, depth,
       x: state.x / 390 * size.width + (Math.cos(radians) * x - Math.sin(radians) * 20) * boatScale,
-      y: 50 + (state.y - state.cameraY) / 700 * (size.height - 140) + depth * boatScale,
+      y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) + depth * boatScale,
     }
   })
   const boardingProgress = state.opening === 'boarding' ? reduced ? 1 : Math.min(1, state.openingAge / 1.2) : 0
   const boardingEase = boardingProgress * boardingProgress * (3 - 2 * boardingProgress)
   const shoreSeats = seats.map(seat => ({ ...seat, x: seat.x - 35 * (1 - boardingEase), y: seat.y - 85 * (1 - boardingEase) }))
-  const dockY = 50 + (dockOrigin.current - state.cameraY) / 700 * (size.height - 140) - 20 * boatScale - 85
+  const dockY = 50 + (dockOrigin.current - state.cameraY) / 700 * (size.height - 50) - 20 * boatScale - 85
   const openingSpeaker = shoreSeats[state.opening === 'ryo' ? 1 : 0]
   const openingLeft = Math.max(16, Math.min(size.width - 236, openingSpeaker.x - 110))
   const speakerSeat = seats[dialogue?.who === 'ryo' ? 1 : 0]
@@ -152,10 +155,10 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const responseWho = encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who
   const responseSpeaker = encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? ''
   const responseSeat = seats[responseWho === 'ryo' ? 1 : 0]
-  const encounterAnchor = responseWho === 'couple' && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 140) - 36 } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
+  const encounterAnchor = responseWho === 'couple' && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 50) - 36 } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
   const responseWidth = Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44, responseSpeaker.length * 12 + 44))
   const responseHeight = measuredResponse.text === response && measuredResponse.width === responseWidth ? measuredResponse.height : 62 + Math.ceil(response.length * 16 / (responseWidth - 40)) * 26
-  const protectedBoat = rowingBounds({ x: state.x / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 140) }, radians, boatScale, seats)
+  const protectedBoat = rowingBounds({ x: state.x / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) }, radians, boatScale, seats)
   const responsePosition = placeResponse(size, encounterAnchor, protectedBoat, responseWidth, responseHeight)
   useLayoutEffect(() => {
     const element = responseElement.current
@@ -233,7 +236,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     </div>
     {onShore && shoreSeats.map(seat => <div key={seat.who} className="rowing-shore-person" data-who={seat.who} style={{ left: seat.x, top: seat.y, width: 88 * boatScale, height: 108 * boatScale }}><Portrait who={seat.who} active={false}/></div>)}
     {state.opening === 'ryo' || state.opening === 'shiro' ? <div className="rowing-dialogue rowing-response rowing-opening-response" role="status" style={{ left: openingLeft, top: Math.min(...shoreSeats.map(s => s.y)) - 108 * boatScale - 16, width: 220, '--row-tail-x': `${openingSpeaker.x - openingLeft}px` } as CSSProperties}><span>{state.opening === 'ryo' ? '月云了' : '宇都木士郎'}</span><p>{state.opening === 'ryo' ? '好无聊，我要划船。' : 'ok'}</p></div> : null}
-    {state.opening === 'guide' ? <div className="rowing-opening-guide" role="status"><p>点击人物<br/>开始划船</p></div> : null}
+    {announcement ? <div className="rowing-opening-guide" role="status" style={{ opacity: announcementOpacity }}><p>{announcement}</p></div> : null}
     {dialogue ? <div className="rowing-dialogue rowing-response rowing-evening-response" role="status" data-speaker={dialogue.who} data-below={bubbleBelow}
       style={{ left: bubbleLeft, top: bubbleY, width: bubbleWidth, '--row-tail-x': `${Math.max(18, Math.min(bubbleWidth - 18, speakerSeat.x - bubbleLeft))}px` } as CSSProperties}>
       <span>{dialogue.speaker}</span><p>{dialogue.text}</p>

@@ -40,7 +40,7 @@ export const EVENING_LINES = [
 ]
 
 export interface RowingState {
-  opening: 'ryo' | 'shiro' | 'boarding' | 'guide' | null
+  opening: 'ryo' | 'shiro' | 'boarding' | 'guide' | 'guide-gap' | 'guide-start' | null
   openingAge: number
   elapsed: number
   minutes: number
@@ -199,7 +199,6 @@ export function chiefHours(minutes: number) {
 
 /** Independent weighted draws: no sequence, pity counter, or dependence on tapping rhythm. */
 export function row(state: RowingState, who: Rower, random: () => number = Math.random): RowAction | null {
-  if (state.opening === 'guide') state.opening = null
   if (state.opening) return null
   const since = state.elapsed - (who === 'shiro' ? state.lastShiro : state.lastRyo)
   if (since < STROKE_COOLDOWN) return null
@@ -235,11 +234,10 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   if (!Number.isFinite(dt) || dt <= 0) return
   dt = Math.min(dt, .1)
   if (state.opening) {
-    if (state.opening === 'guide') return
     state.openingAge += dt
-    const duration = state.opening === 'ryo' ? 3.2 : state.opening === 'shiro' ? 1.8 : 1.2
+    const duration = { ryo: 3.2, shiro: 1.8, boarding: 1.2, guide: 2, 'guide-gap': .3, 'guide-start': 1.8 }[state.opening]
     if (state.openingAge >= duration) {
-      state.opening = state.opening === 'ryo' ? 'shiro' : state.opening === 'shiro' ? 'boarding' : 'guide'
+      state.opening = state.opening === 'ryo' ? 'shiro' : state.opening === 'shiro' ? 'boarding' : state.opening === 'boarding' ? 'guide' : state.opening === 'guide' ? 'guide-gap' : state.opening === 'guide-gap' ? 'guide-start' : null
       state.openingAge = 0
     }
     return

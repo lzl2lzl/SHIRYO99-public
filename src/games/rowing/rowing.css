@@ -13,9 +13,8 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-clock span { display: block; font-size: 12px; line-height: 1.6; }
 .rowing-clock time { display: block; font-size: 32px; line-height: 1.3; font-variant-numeric: tabular-nums; font-weight: 400; letter-spacing: -.02em; }
 .rowing-water, .rowing-stage, .rowing-boat-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.rowing-stage, .rowing-water { height: calc(100% - 140px); top: 50px; overflow: visible; }
-.rowing-stage { overflow: hidden; }
-.rowing-boat-layer { top: 50px; height: calc(100% - 140px); }
+.rowing-stage, .rowing-water { height: calc(100% - 50px); top: 50px; overflow: visible; }
+.rowing-boat-layer { top: 50px; height: calc(100% - 50px); }
 .rowing-bank { fill: var(--row-shore); transition: fill 2s; }
 .rowing-bank-inner { fill: var(--row-green); transition: fill 2s; }
 .rowing-waterline { fill: none; stroke: var(--row-ink); stroke-width: 1; opacity: .1; }
@@ -64,7 +63,7 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-shore-person { position: absolute; z-index: 4; transform: translate(-50%, -100%); pointer-events: none; }
 .rowing-shore-person svg { display: block; width: 100%; height: 100%; }
 .rowing-opening-guide { position: absolute; left: 9%; width: 82%; top: 31%; text-align: center; color: #fcf6dc; z-index: 6; pointer-events: none; }
-.rowing-opening-guide p { margin: 0; font-size: clamp(18px, 5.4vw, 24px); line-height: 1.8; font-weight: 600; text-shadow: 0 2px 6px #163e47; }
+.rowing-opening-guide p { margin: 0; font-size: clamp(36px, 8vw, 46px); line-height: 1.5; font-weight: 600; text-shadow: 0 2px 6px #163e47; }
 .rowing-person { touch-action: none !important; user-select: none; -webkit-user-select: none; }
 .rowing-screen[data-hidden="true"] * { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) { .rowing-person > svg { transform: none !important; } .rowing-screen { transition: none; } }

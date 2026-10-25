@@ -83,10 +83,10 @@ test('rowing and clock continue during daily speech; invalid time and a fresh ga
 
 function wait(game, seconds) { for (let i = 0; i < seconds * 60; i++) tickRowing(game, 1 / 60) }
 
-test('shore opening keeps an empty boat and frozen clock until both lines, boarding and the first paddle', () => {
+test('shore opening freezes the clock through boarding and two automatic announcements separated by a gap', () => {
   const g = createRowing(() => .2, true), position = { x: g.x, y: g.y }
   assert.equal(g.opening, 'ryo'); assert.equal(g.minutes, 1080)
-  for (const expected of ['shiro', 'boarding', 'guide']) {
+  for (const expected of ['shiro', 'boarding', 'guide', 'guide-gap', 'guide-start', null]) {
     const before = g.opening
     for (let i = 0; i < 40 && g.opening === before; i++) {
       assert.equal(row(g, 'shiro'), null); assert.equal(row(g, 'ryo'), null)
@@ -96,7 +96,6 @@ test('shore opening keeps an empty boat and frozen clock until both lines, board
     assert.equal(g.minutes, 1080); assert.equal(g.taps, 0)
     assert.deepEqual({ x: g.x, y: g.y }, position)
   }
-  wait(g, 10); assert.equal(g.opening, 'guide'); assert.equal(g.minutes, 1080)
   assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(g.opening, null)
   tickRowing(g, .1); assert.ok(g.minutes > 1080); assert.equal(g.shiroStrokes, 1)
   assert.equal(createRowing(() => .2, true).opening, 'ryo')
