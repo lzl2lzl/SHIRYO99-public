@@ -2,7 +2,8 @@ export type Rower = 'shiro' | 'ryo'
 export type RowAction = 'rest' | 'stroke' | 'strong' | 'refuse' | 'push' | 'reverse'
 export type Period = 'morning' | 'noon' | 'sunset' | 'night'
 export const MINUTES_PER_SECOND = 3
-export const EVENING_MINUTE = 18 * 60
+export const START_MINUTE = 19 * 60
+export const EVENING_MINUTE = 22 * 60
 export const EVENING_LINE_SECONDS = 3.2
 export const STROKE_COOLDOWN = .55
 export const COUPLE_COUNT = 8
@@ -78,7 +79,7 @@ export function createCoupleMotion(random: () => number = Math.random): CoupleMo
 
 export function createRowing(random: () => number = Math.random): RowingState {
   return {
-    elapsed: 0, minutes: 9 * 60, x: 195, y: 370, heading: Math.PI, spin: 0, speed: 0,
+    elapsed: 0, minutes: START_MINUTE, x: 195, y: 370, heading: Math.PI, spin: 0, speed: 0,
     effort: false, eveningSeen: false, dialogue: null, dialogueAge: 0,
     lastShiro: -100, lastRyo: -100, shiroAction: 'rest', ryoAction: 'rest',
     shiroUntil: 0, ryoUntil: 0, laughUntil: 0, shiroStrokes: 0, ryoStrokes: 0,
@@ -177,9 +178,16 @@ function impulse(state: RowingState, who: Rower, reverse = false, strength = 1) 
   }
 }
 
-/** Starts reluctant at 09:00; forward outcomes together never exceed 50%, even after midnight. */
+/** First evening ramps 0–50%; subsequent daylight is 30% and nights are 50%. */
 export function ryoForwardChance(minutes: number) {
-  return .05 + .45 * Math.max(0, Math.min(1, (minutes - 9 * 60) / (EVENING_MINUTE - 9 * 60)))
+  if (minutes < EVENING_MINUTE) return .5 * Math.max(0, (minutes - START_MINUTE) / (EVENING_MINUTE - START_MINUTE))
+  const hour = ((minutes / 60) % 24 + 24) % 24
+  return hour >= 6 && hour < 18 ? .3 : .5
+}
+
+export function chiefHours(minutes: number) {
+  const minute = ((minutes % 1440) + 1440) % 1440
+  return minute >= START_MINUTE && minute < EVENING_MINUTE
 }
 
 /** Independent weighted draws: no sequence, pity counter, or dependence on tapping rhythm. */
@@ -255,7 +263,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   for (const boat of state.couples) {
     moveCouple(boat, movingPlayer, state.elapsed, dt)
     // One independent 1/10 draw per visible boat at dusk, never per animation frame.
-    if (periodAt(state.minutes) === 'sunset' && coupleVisible(boat, state.cameraY) && !boat.chiefChecked) {
+    if (chiefHours(state.minutes) && coupleVisible(boat, state.cameraY) && !boat.chiefChecked) {
       boat.chiefChecked = true
       if (random() < .1) boat.chiefSurname = CHIEF_SURNAMES[Math.max(0, Math.min(CHIEF_SURNAMES.length - 1, Math.floor(random() * CHIEF_SURNAMES.length)))]
     }
@@ -298,7 +306,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       }
     }
   }
-  if (!state.chiefVisit && state.dialogue === null && !state.encounter && periodAt(state.minutes) === 'sunset') {
+  if (!state.chiefVisit && state.dialogue === null && !state.encounter && chiefHours(state.minutes)) {
     const boat = state.couples.filter(candidate => candidate.chiefSurname && !candidate.chiefGreeted && coupleVisible(candidate, state.cameraY))
       .sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))[0]
     if (boat) {

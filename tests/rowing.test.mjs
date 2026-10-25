@@ -53,7 +53,7 @@ test('passive drifting does not provoke collisions, while paddling into a couple
     for (let i = 0; i < 600; i++) tickRowing(g, .1, () => .99)
     assert.equal(g.collisions, 0, `idle river seed ${seed}`)
   }
-  const g = createRowing(seeded(4))
+  const g = createRowing(seeded(4)); g.minutes = 20 * 60
   g.couples = [{ id: 99, x: g.x, y: g.y + 108.1, heading: Math.PI, motion: createCoupleMotion(seeded(5)) }]
   assert.ok(hullGap(g.couples[0], g) > 59)
   row(g, 'shiro'); row(g, 'ryo', () => .01); tickRowing(g, .1, () => .2)
@@ -71,16 +71,16 @@ test('invalid time never moves couples; recycled boats receive new motion withou
 })
 
 function chiefScene() {
-  const g = createRowing(); g.minutes = 16 * 60
+  const g = createRowing(); g.minutes = 20 * 60
   g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
   tickRowing(g, .01, () => .01)
   return g
 }
 
-test('dusk draws once per visible boat at 1/10, never every frame or outside dusk', () => {
+test('19–22 draws once per visible boat at 1/10, never every frame or outside after-work hours', () => {
   let selected = 0
   for (let i = 0; i < 1000; i++) {
-    const g = createRowing(); g.minutes = 16 * 60
+    const g = createRowing(); g.minutes = 20 * 60
     g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
     let draws = 0
     tickRowing(g, .01, () => { draws++; return (i + .5) / 1000 })
@@ -91,7 +91,7 @@ test('dusk draws once per visible boat at 1/10, never every frame or outside dus
     if (g.couples[0].chiefSurname) selected++
   }
   assert.equal(selected, 100)
-  for (const minutes of [9 * 60, 15 * 60, 18 * 60, 23 * 60]) {
+  for (const minutes of [9 * 60, 16 * 60, 18 * 60, 22 * 60, 23 * 60, 40 * 60]) {
     const g = createRowing(); g.minutes = minutes; g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
     tickRowing(g, .01, () => { assert.fail('No chief draw outside dusk') })
     assert.equal(g.chiefVisit, null)
@@ -101,7 +101,7 @@ test('dusk draws once per visible boat at 1/10, never every frame or outside dus
 test('Sato plus ten surnames are freshly selected and carried consistently through the script', () => {
   assert.equal(CHIEF_SURNAMES.length, 11); assert.equal(new Set(CHIEF_SURNAMES).size, 11)
   for (let i = 0; i < CHIEF_SURNAMES.length; i++) {
-    const g = createRowing(); g.minutes = 16 * 60; g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
+    const g = createRowing(); g.minutes = 20 * 60; g.couples = [{ id: 100, x: 90, y: 200, heading: Math.PI }]
     const draws = [.01, (i + .5) / CHIEF_SURNAMES.length]
     tickRowing(g, .01, () => draws.shift())
     assert.equal(g.chiefVisit.surname, CHIEF_SURNAMES[i])
@@ -156,7 +156,7 @@ test('chief boat leaving any edge cancels remaining lines and mosaic, including 
 
 test('chief collision always says ah and uses the most polite apology, even before greeting', () => {
   for (const draw of [0, .5, .999]) {
-    const g = createRowing(); g.minutes = 16 * 60
+    const g = createRowing(); g.minutes = 20 * 60
     g.couples = [{ id: 100, x: g.x, y: g.y + 90, heading: Math.PI, chiefChecked: true, chiefSurname: '田中' }]
     tickRowing(g, .01, () => draw)
     assert.equal(g.encounter.complaint, '啊！'); assert.equal(g.encounter.apology, '非常抱歉，我们会注意的。')
@@ -174,9 +174,12 @@ test('recycled boats get a fresh chief draw and no visit survives recycling or a
   assert.equal(g.chiefVisit.surname, '吉田'); assert.equal(createRowing().chiefVisit, null)
 })
 
-test('rowing starts at 09:00; idle time runs without inventing strokes', () => {
-  const g = createRowing(); wait(g, 10)
-  assert.equal(clockAt(g.minutes), '09:30')
+test('rowing starts at 19:00 in night scenery without an immediate go-home line', () => {
+  const g = createRowing()
+  assert.equal(clockAt(g.minutes), '19:00'); assert.equal(periodAt(g.minutes), 'night'); assert.equal(ryoForwardChance(g.minutes), 0)
+  wait(g, 10)
+  assert.equal(clockAt(g.minutes), '19:30')
+  assert.equal(g.dialogue, null); assert.equal(g.effort, false)
   assert.equal(g.taps, 0); assert.equal(g.shiroStrokes, 0); assert.equal(g.ryoStrokes, 0)
   assert.equal(g.x, 195); assert.ok(Math.abs(g.y - 430) < .01); assert.ok(g.cameraY > 50)
 })
@@ -188,16 +191,16 @@ test('Shiro reliably rows and rapidly repeated events cannot spam strokes', () =
   wait(g, .6); assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(g.shiroStrokes, 2)
 })
 
-test('daytime Ryo can cooperate, refuse or push Shiro; morning push says haha', () => {
+test('Ryo can cooperate, refuse or push before going home; the retained morning push says haha', () => {
   for (const [roll, result] of [[.01, 'stroke'], [.3, 'refuse'], [.9, 'push']]) {
-    const g = createRowing(); assert.equal(row(g, 'ryo', () => roll), result)
+    const g = createRowing(); g.minutes = 33 * 60; assert.equal(row(g, 'ryo', () => roll), result)
     if (result === 'stroke') { assert.equal(g.ryoStrokes, 1); assert.ok(g.spin < 0) }
     if (result === 'refuse') { assert.equal(g.spin, 0); assert.equal(g.speed, 0) }
     if (result === 'push') { assert.equal(g.shiroStrokes, 1); assert.equal(g.ryoStrokes, 0); assert.equal(g.laughUntil, 1.8); assert.ok(g.spin > 0) }
   }
 })
 
-test('each draw is independent of tapping rhythm and previous actions; morning forward outcomes total 5%', () => {
+test('each draw is independent of tapping rhythm and previous actions; 19:00 has zero forward chance', () => {
   const counts = { stroke: 0, strong: 0, refuse: 0, push: 0 }
   for (let i = 0; i < 1000; i++) {
     const fast = createRowing(), slow = createRowing()
@@ -208,14 +211,15 @@ test('each draw is independent of tapping rhythm and previous actions; morning f
     assert.equal(row(slow, 'ryo', () => draw), action)
     counts[action]++
   }
-  assert.deepEqual(counts, { stroke: 40, strong: 10, refuse: 475, push: 475 })
+  assert.deepEqual(counts, { stroke: 0, strong: 0, refuse: 500, push: 500 })
   const normal = createRowing(), strong = createRowing()
-  row(normal, 'ryo', () => .01); row(strong, 'ryo', () => .045)
+  normal.minutes = strong.minutes = 22 * 60
+  row(normal, 'ryo', () => .1); row(strong, 'ryo', () => .45)
   assert.ok(strong.speed > normal.speed); assert.ok(Math.abs(strong.spin) > Math.abs(normal.spin))
 })
 
-test('forward probability rises from morning to evening and caps all forward actions together at 50%', () => {
-  for (const [hour, expected] of [[9, .05], [12, .2], [15, .35], [18, .5], [24, .5], [33, .5], [100, .5]]) {
+test('19–22 ramps 0–50%; subsequent days drop to 30% at 06:00 and return to 50% at 18:00', () => {
+  for (const [hour, expected] of [[19, 0], [19.6, .1], [20.5, .25], [21.4, .4], [22, .5], [24, .5], [29.99, .5], [30, .3], [36, .3], [41.99, .3], [42, .5], [46, .5], [48, .5], [54, .3], [66, .5]]) {
     assert.ok(Math.abs(ryoForwardChance(hour * 60) - expected) < 1e-10)
     for (const effort of [false, true]) {
       const counts = { stroke: 0, strong: 0, refuse: 0, push: 0, reverse: 0 }
@@ -232,13 +236,15 @@ test('forward probability rises from morning to evening and caps all forward act
   let previous = 0
   for (let minute = 0; minute <= 3 * 24 * 60; minute++) {
     const probability = ryoForwardChance(minute)
-    assert.ok(probability >= previous && probability >= 0 && probability <= .5)
+    if (minute >= 19 * 60 && minute <= 22 * 60) assert.ok(probability >= previous)
+    assert.ok(probability >= 0 && probability <= .5)
     previous = probability
   }
 })
 
 test('one-sided effort circles; matched strokes cancel turning and travel further', () => {
   const circle = createRowing(), forward = createRowing()
+  circle.minutes = forward.minutes = 20 * 60
   circle.couples = []; forward.couples = []
   for (let i = 0; i < 30; i++) {
     row(circle, 'shiro'); row(forward, 'shiro'); row(forward, 'ryo', () => 0)
@@ -251,8 +257,8 @@ test('one-sided effort circles; matched strokes cancel turning and travel furthe
 })
 
 test('evening lines expire automatically while time, movement and both rowers continue', () => {
-  const g = createRowing(); g.couples = []; g.minutes = 1079.9; tickRowing(g, .1)
-  assert.ok(g.minutes > 1080); assert.equal(g.dialogue, 0)
+  const g = createRowing(); g.couples = []; g.minutes = 1319.9; tickRowing(g, .1)
+  assert.ok(g.minutes > 1320); assert.equal(g.dialogue, 0)
   assert.deepEqual(EVENING_LINES.map(line => line.text), ['该回家了，明天还有工作。', '你以为我不想吗！！！'])
   const startY = g.y, startTime = g.minutes
   for (let i = 0; i < 5; i++) {
@@ -263,12 +269,12 @@ test('evening lines expire automatically while time, movement and both rowers co
   wait(g, .3); assert.equal(g.dialogue, 1); assert.equal(g.effort, true)
   assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(row(g, 'ryo', () => .9), 'reverse')
   wait(g, 3.2); assert.equal(g.dialogue, null); assert.equal(g.effort, true)
-  assert.ok(g.minutes > 1098); assert.ok(g.cameraY > 0)
+  assert.ok(g.minutes > 1338); assert.ok(g.cameraY > 0)
 })
 
 test('evening effort always rows, reverse strokes worsen Shiro-side spinning, never refuses or pushes', () => {
   for (const roll of [0, .2, .75, .9]) {
-    const g = createRowing(); g.effort = true; g.minutes = 18 * 60
+    const g = createRowing(); g.effort = true; g.minutes = 22 * 60
     row(g, 'shiro'); const oldSpin = g.spin
     const action = row(g, 'ryo', () => roll)
     assert.ok(['stroke', 'strong', 'reverse'].includes(action))
@@ -285,20 +291,25 @@ test('time wraps across midnight; effort survives dawn and dialogue never repeat
   tickRowing(g, .1); assert.equal(clockAt(g.minutes), '00:00'); assert.equal(periodAt(g.minutes), 'night')
   g.minutes = 1799.9; tickRowing(g, .1); assert.equal(periodAt(g.minutes), 'morning'); assert.equal(g.effort, true)
   g.minutes = 2519.9; tickRowing(g, .1); assert.equal(g.dialogue, null)
+  assert.equal(ryoForwardChance(g.minutes), .5)
+  for (const [boundary, before, after] of [[30, .5, .3], [42, .3, .5], [54, .5, .3], [66, .3, .5]]) {
+    g.minutes = boundary * 60 - .1; assert.equal(ryoForwardChance(g.minutes), before)
+    tickRowing(g, .1); assert.equal(ryoForwardChance(g.minutes), after); assert.equal(g.dialogue, null)
+  }
 })
 
 test('invalid time is ignored; large delta cannot catch up a background tab; trail bounded', () => {
   const g = createRowing(), initial = structuredClone(g)
   for (const dt of [0, -1, Infinity, NaN]) tickRowing(g, dt)
   assert.deepEqual(g, initial)
-  tickRowing(g, 10000); assert.ok(g.minutes < 541)
+  tickRowing(g, 10000); assert.ok(g.minutes < 1141)
   for (let i = 0; i < 300; i++) { row(g, 'shiro'); wait(g, .6) }
   assert.ok(g.trail.length < 33); assert.ok(g.x > 60 && g.x < 340); assert.ok(g.y > 550)
 })
 
 test('river camera follows unbounded forward and backward travel instead of an invisible wall', () => {
   for (const heading of [0, Math.PI]) {
-    const g = createRowing(); g.couples = []; g.heading = heading
+    const g = createRowing(); g.minutes = 20 * 60; g.couples = []; g.heading = heading
     for (let i = 0; i < 120; i++) { row(g, 'shiro'); row(g, 'ryo', () => 0); wait(g, .6) }
     assert.ok(heading === 0 ? g.y < -1000 : g.y > 2000)
     assert.ok(Math.abs(g.y - g.cameraY - 370) < 22)
@@ -324,10 +335,10 @@ test('night scene takes precedence over collision speech and distant boats recyc
   const g = createRowing()
   g.couples[0] = { id: 0, x: g.x, y: g.y + 90, heading: Math.PI }
   tickRowing(g, .01); assert.ok(g.encounter)
-  g.minutes = 1079.99; tickRowing(g, .01)
+  g.minutes = 1319.99; tickRowing(g, .01)
   assert.equal(g.dialogue, 0); assert.equal(g.encounter, null)
   g.couples[0].x = g.x; g.couples[0].y = g.y + 90
-  tickRowing(g, .1); assert.equal(g.encounter, null); assert.ok(g.minutes > 1080)
+  tickRowing(g, .1); assert.equal(g.encounter, null); assert.ok(g.minutes > 1320)
   const trip = createRowing(); trip.y = 5000; trip.cameraY = 4630
   tickRowing(trip, .01)
   assert.equal(trip.couples.length, COUPLE_COUNT)
