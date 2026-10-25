@@ -8,7 +8,11 @@ import './lobby.css'
 const BRAND_LOGO = `${import.meta.env.BASE_URL}assets/brand/shiryo99-love.svg`
 const readGameId = () => {
   const id = location.hash.replace('#/game/', '') || null
-  return id === 'endless-rowing' ? 'hate-rowing' : id
+  if (id === 'endless-rowing' || id === 'hate-rowing') {
+    history.replaceState(null, '', `${location.pathname}${location.search}#/game/i-hate-rowing`)
+    return 'i-hate-rowing'
+  }
+  return id
 }
 
 function LoveNote() {
@@ -75,7 +79,6 @@ export function App() {
   useEffect(() => {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', activeGame ? '#11110f' : '#f4f2f7')
     document.title = activeGame ? `${activeGame.title} · SHIRYO99` : 'SHIRYO99'
-    if (location.hash === '#/game/endless-rowing') history.replaceState(null, '', `${location.pathname}${location.search}#/game/hate-rowing`)
   }, [activeGame])
 
   useEffect(() => {

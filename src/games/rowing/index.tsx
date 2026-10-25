@@ -234,6 +234,6 @@ export function RowingGame({ onExit }: GameScreenProps) {
 }
 
 export const rowingGame: GameDefinition = {
-  id: 'hate-rowing', title: '我讨厌划船', kicker: '', description: '两个人，一条总在打转的小船。',
+  id: 'i-hate-rowing', title: '我讨厌划船', kicker: '', description: '两个人，一条总在打转的小船。',
   kind: 'mechanic', accent: '#a68bc6', estimatedTime: '一直划', component: RowingGame,
 }
