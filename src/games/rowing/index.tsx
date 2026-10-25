@@ -3,6 +3,7 @@ import type { GameDefinition, GameScreenProps } from '../../engine/types'
 import { chiefLines, clockDisplayAt, createRowing, EVENING_LINES, complaintSeconds, periodAt, row, tickRowing, type Rower } from './model'
 import { bankPath, bankX, riverDetails } from './scenery'
 import { placeResponse, rowingBounds } from './bubble-layout'
+import { BirthdayMoment } from './BirthdayMoment'
 import './rowing.css'
 
 
@@ -159,12 +160,13 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const chiefLine = visit && !visit.done ? chiefLines(visit.surname)[visit.line] : null
   const dailyChat = state.daily.chat
   const dailyLine = dailyChat?.lines[dailyChat.line]
+  const calendarChat = state.calendar.chat, calendarLine = calendarChat?.lines[calendarChat.line]
   const coupleChat = state.coupleChat, coupleLine = coupleChat?.lines[coupleChat.line]
   const complaining = Boolean(encounter && encounter.age < complaintSeconds(encounter))
   const couple = state.couples.find(boat => boat.id === (encounter?.boatId ?? (chiefLine ? visit?.boatId : coupleChat?.boatId)))
-  const response = encounter ? complaining ? encounter.complaint : encounter.apology : dailyLine?.text ?? chiefLine?.text ?? coupleLine ?? ''
-  const responseWho = encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who ?? (coupleLine ? 'couple' : undefined)
-  const responseSpeaker = encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? (coupleLine ? '周围的情侣' : '')
+  const response = calendarLine?.text ?? (encounter ? complaining ? encounter.complaint : encounter.apology : dailyLine?.text ?? chiefLine?.text ?? coupleLine ?? '')
+  const responseWho = calendarLine?.who ?? (encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who ?? (coupleLine ? 'couple' : undefined))
+  const responseSpeaker = calendarLine ? calendarLine.who==='ryo'?'月云了':'宇都木士郎' : encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? (coupleLine ? '周围的情侣' : '')
   const responseSeat = seats[responseWho === 'ryo' ? 1 : 0]
   const encounterAnchor = responseWho === 'couple' && couple ? { x: couple.x / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 50) - 110 * boatScale } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
   const responseWidth = Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44, responseSpeaker.length * 12 + 44))
@@ -245,7 +247,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
           aria-label={who === 'shiro' ? '让宇都木士郎划桨' : '让月云了划桨'} {...inputs(who)}>
           <Portrait who={who} masked={who === 'ryo' && Boolean(visit?.masked)} active={who === 'shiro' ? state.shiroAction !== 'rest' : ['push', 'stroke', 'strong', 'reverse', 'miss'].includes(state.ryoAction)} />
         </button>)}
-        {!dialogue && !encounter && !chiefLine && !dailyLine && !coupleLine && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
+        {!dialogue && !calendarLine && !encounter && !chiefLine && !dailyLine && !coupleLine && state.laughUntil > state.elapsed ? <div className="rowing-laugh" role="status">哈哈</div> : null}
       </div>
     </div>
     {onShore && shoreSeats.map(seat => <div key={seat.who} className="rowing-shore-person" data-who={seat.who} style={{ left: seat.x, top: seat.y, width: 88 * boatScale, height: 108 * boatScale }}><Portrait who={seat.who} active={false}/></div>)}
@@ -255,10 +257,11 @@ export function RowingGame({ onExit }: GameScreenProps) {
       style={{ left: bubbleLeft, top: bubbleY, width: bubbleWidth, '--row-tail-x': `${Math.max(18, Math.min(bubbleWidth - 18, speakerSeat.x - bubbleLeft))}px` } as CSSProperties}>
       <span>{dialogue.speaker}</span><p>{dialogue.text}</p>
     </div> : null}
-    {!dialogue && response ? <div ref={responseElement} className={`rowing-dialogue rowing-response ${encounter ? 'rowing-collision-response' : dailyLine ? 'rowing-daily-response' : chiefLine ? 'rowing-chief-response' : 'rowing-couple-response'}`} role="status" data-chat={dailyChat?.kind ?? coupleChat?.kind} data-speaker={responseWho} data-below={responsePosition.below}
+    {!dialogue && response ? <div ref={responseElement} className={`rowing-dialogue rowing-response ${calendarLine ? 'rowing-calendar-response' : encounter ? 'rowing-collision-response' : dailyLine ? 'rowing-daily-response' : chiefLine ? 'rowing-chief-response' : 'rowing-couple-response'}`} role="status" data-chat={calendarChat ? calendarChat.birthday ? 'birthday' : 'holiday' : dailyChat?.kind ?? coupleChat?.kind} data-speaker={responseWho} data-below={responsePosition.below}
       style={{ left: responsePosition.left, top: responsePosition.top, transform: 'none', width: responseWidth, '--row-tail-x': `${responsePosition.tailX}px` } as CSSProperties}>
       <span>{responseSpeaker}</span><p>{response}</p>
     </div> : null}
+    {state.calendar.celebration && <BirthdayMoment celebration={state.calendar.celebration} reduced={reduced}/>}
   </main>
 }
 

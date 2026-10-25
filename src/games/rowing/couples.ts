@@ -1,3 +1,4 @@
+import { calendarAt } from './calendar.ts'
 export type CoupleStyle = 'steady' | 'resting' | 'wobbly' | 'fast' | 'distracted'
 export interface CoupleMotion {
   speed: number; lane: number; amplitude: number; frequency: number; phase: number; pulseFrequency: number; pulsePhase: number
@@ -19,6 +20,9 @@ export function coupleVisible(boat: CoupleBoat, cameraY: number) {
 }
 export function coupleTarget(minutes: number) {
   const hour = ((minutes / 60) % 24 + 24) % 24
+  const calendar = calendarAt(minutes)
+  if (calendar.allDayRomance) return 9
+  if (calendar.busy && hour >= 6 && hour < 23.5) return hour < 23 ? 9 : 5
   return hour < 6 || hour >= 23.5 ? 0 : hour < 12 ? 3 : hour < 23 ? COUPLE_COUNT : 3
 }
 export function createCoupleMotion(random: () => number = Math.random): CoupleMotion {

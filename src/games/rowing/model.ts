@@ -1,4 +1,6 @@
 import { createDailyDialogue, tickDailyDialogue, type DailyDialogue } from './daily-dialogue.ts'
+import { calendarAt } from './calendar.ts'
+import { createCalendarDialogue, tickCalendarDialogue, type CalendarDialogue } from './calendar-dialogue.ts'
 import { COUPLE_COUNT, CONTACT_DISTANCE, createCouple, createCoupleMotion, moveCouple, departCouple, hullContact, coupleVisible, coupleTarget, riverCenter, type CoupleBoat } from './couples.ts'
 import { COUPLE_LINES, coupleLineSeconds, pickCoupleChat, type CoupleChat } from './couple-dialogue.ts'
 export { COUPLE_COUNT, createCoupleMotion, moveCouple, coupleVisible, riverCenter } from './couples.ts'
@@ -71,6 +73,7 @@ export interface RowingState {
   chiefVisit: ChiefVisit | null
   firstChiefSeen: boolean
   daily: DailyDialogue
+  calendar: CalendarDialogue
   collisionCooldown: number
   collisions: number
   trafficNextAt: number
@@ -88,7 +91,7 @@ export function createRowing(random: () => number = Math.random, withOpening = f
     taps: 0, distance: 0, turnTravel: 0, trail: [], trailTimer: 0,
     cameraY: 0, couples: [-740, -480, -240, 240, 480, 720, 960].map((offset, id) => createCouple(id, (withOpening ? 480 : 370) + offset, random)),
     nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, firstChiefSeen: false, daily: createDailyDialogue(), collisionCooldown: 0, collisions: 0,
-    trafficNextAt: 3, coupleChat: null, coupleChatNextAt: 3,
+    trafficNextAt: 3, coupleChat: null, coupleChatNextAt: 3, calendar: createCalendarDialogue(),
   }
 }
 
@@ -96,7 +99,7 @@ export function complaintSeconds(encounter: Encounter) { return Math.max(2.6, Ar
 
 function updateTraffic(state: RowingState, random: () => number) {
   const hour = state.minutes / 60 % 24, target = coupleTarget(state.minutes)
-  if (hour < 6) { state.couples = []; state.encounter = null; state.chiefVisit = null; state.coupleChat = null; return }
+  if (hour < 6 && !calendarAt(state.minutes).allDayRomance) { state.couples = []; state.encounter = null; state.chiefVisit = null; state.coupleChat = null; return }
   if (state.elapsed < state.trafficNextAt) return
   state.trafficNextAt = state.elapsed + 2
   const active = state.couples.filter(b => !b.departing).sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))
@@ -117,7 +120,7 @@ function updateTraffic(state: RowingState, random: () => number) {
 }
 
 function tickCoupleChat(state: RowingState, dt: number, random: () => number) {
-  const busy = state.dialogue !== null || state.encounter || state.daily.chat || (state.chiefVisit && !state.chiefVisit.done)
+  const busy = state.calendar.chat || state.dialogue !== null || state.encounter || state.daily.chat || (state.chiefVisit && !state.chiefVisit.done)
   const chat = state.coupleChat, boat = state.couples.find(b => b.id === chat?.boatId)
   if (chat && (busy || !boat || !coupleVisible(boat, state.cameraY))) {
     state.coupleChat = null; state.coupleChatNextAt = state.elapsed + 5
@@ -191,7 +194,7 @@ export function chooseRyoAction(minutes: number, effort: boolean, draw: number):
 
 /** Admit one complete exchange; ambient collision speech cannot interrupt a conversation. */
 function canStartBoatSpeech(state: RowingState) {
-  return !state.opening && state.dialogue === null && !state.encounter
+  return !state.opening && !state.calendar.chat && state.dialogue === null && !state.encounter
     && (!state.daily.chat || state.daily.chat.kind === 'random')
     && (!state.chiefVisit || state.chiefVisit.done)
 }
@@ -281,6 +284,9 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
     if (state.encounter.age >= complaintSeconds(state.encounter) + 3.2) state.encounter = null
   }
   updateTraffic(state, random)
+  tickCalendarDialogue(state.calendar, previousMinutes, state.minutes, dt,
+    state.dialogue !== null || Boolean(state.encounter) || Boolean(state.daily.chat) || Boolean(state.chiefVisit && !state.chiefVisit.done))
+  if (state.calendar.chat) state.laughUntil = 0
   for (const boat of state.couples) {
     moveCouple(boat, { ...movingPlayer, spin: state.spin }, state.elapsed, dt, state.couples)
     // Later evenings redraw once per visible boat per night, never every frame.
@@ -316,7 +322,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   const speakingBoat = state.couples.find(candidate => candidate.id === state.encounter?.boatId)
   if (!speakingBoat || !coupleVisible(speakingBoat, state.cameraY)) state.encounter = null
   tickDailyDialogue(state.daily, previousMinutes, state.minutes, dt,
-    state.dialogue !== null || Boolean(state.encounter) || Boolean(state.chiefVisit && !state.chiefVisit.done), random)
+    Boolean(state.calendar.chat) || state.dialogue !== null || Boolean(state.encounter) || Boolean(state.chiefVisit && !state.chiefVisit.done), random)
   if (state.daily.chat) state.laughUntil = 0
   const visit = state.chiefVisit
   if (visit) {
@@ -324,7 +330,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
     if (!boat || !coupleVisible(boat, state.cameraY)) {
       state.chiefVisit = null
       if (state.encounter?.boatId === visit.boatId) state.encounter = null
-    } else if (!visit.done && state.dialogue === null && !state.encounter && !state.daily.chat) {
+    } else if (!visit.done && !state.calendar.chat && state.dialogue === null && !state.encounter && !state.daily.chat) {
       visit.age += dt
       if (visit.age >= (visit.line === 1 ? 1.2 : 3.6)) {
         visit.age = 0; visit.line++
@@ -333,7 +339,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       }
     }
   }
-  if (!state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && chiefHours(state.minutes)) {
+  if (!state.calendar.chat && !state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && chiefHours(state.minutes)) {
     const firstNight = state.minutes < 1440
     const boat = state.couples.filter(candidate => coupleVisible(candidate, state.cameraY)
       && (firstNight ? !state.firstChiefSeen : candidate.chiefSurname && !candidate.chiefGreeted))

@@ -63,4 +63,16 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-opening-guide p { margin: 0; font-size: clamp(36px, 8vw, 46px); line-height: 1.5; font-weight: 600; text-shadow: 0 2px 6px #163e47; }
 .rowing-person { touch-action: none !important; user-select: none; -webkit-user-select: none; }
 .rowing-screen[data-hidden="true"] * { animation-play-state: paused !important; }
+.rowing-birthday { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; }
+.rowing-birthday svg { display: block; width: 100%; height: 100%; }
+.rowing-petal { position: absolute; width: 22px; height: 28px; color: #f4cbdc; }
+.rowing-petal-1 { color: #f9e4ed; }
+.rowing-petal-2 { color: #dcbce6; }
+.rowing-birthday-wash { position: absolute; inset: 0; background: #b493de; }
+.rowing-birthday-emblem { position: absolute; top: 105px; left: 50%; width: 240px; height: 240px; transform: translateX(-50%); color: #b493de; }
+.rowing-birthday-core { position: absolute; left: 64px; top: 64px; width: 112px; height: 112px; }
+.rowing-birthday-core b { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 4px; color: #241731; font: 900 34px/1 Arial, sans-serif; }
+.rowing-birthday-orbit { position: absolute; left: 106px; top: 106px; width: 28px; height: 28px; }
+.rowing-birthday-orbit-1 { color: #d2cdd8; }
+@media (max-height: 700px) { .rowing-birthday-emblem { top: 95px; transform: translateX(-50%) scale(.7); transform-origin: top center; } }
 @media (prefers-reduced-motion: reduce) { .rowing-person > svg { transform: none !important; } .rowing-screen { transition: none; } }
