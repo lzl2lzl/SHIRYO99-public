@@ -183,7 +183,7 @@ function impulse(state: RowingState, who: Rower, reverse = false, strength = 1) 
 
 /** First evening ramps 0–50%; subsequent daylight is 30% and nights are 50%. */
 export function ryoForwardChance(minutes: number) {
-  if (minutes < EVENING_MINUTE) return .5 * Math.max(0, (minutes - FORWARD_RAMP_START) / (EVENING_MINUTE - FORWARD_RAMP_START))
+  if (minutes < EVENING_MINUTE) return .25 + .25 * Math.max(0, (minutes - START_MINUTE) / (EVENING_MINUTE - START_MINUTE))
   const hour = ((minutes / 60) % 24 + 24) % 24
   return hour >= 6 && hour < 18 ? .3 : .5
 }
@@ -221,7 +221,7 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
   }
   state.lastRyo = state.elapsed
   const action = state.minutes < EVENING_MINUTE && !state.effort
-    ? openingRyoAction(state.ryoMood, state.elapsed, random)
+    ? openingRyoAction(state.ryoMood, state.elapsed, random, ryoForwardChance(state.minutes))
     : chooseRyoAction(state.minutes, state.effort, random())
   if (action === 'stroke' || action === 'strong') {
     impulse(state, who, false, action === 'strong' ? 1.45 : 1)
@@ -229,6 +229,12 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
   }
   if (action === 'reverse') {
     impulse(state, who, true)
+    if (!state.ryoMood.reverseSpoken) {
+      state.ryoMood.reverseSpoken = true
+      if (canStartBoatSpeech(state) && !state.coupleChat) {
+        state.ryoMood.speech = 'huff'; state.ryoMood.age = 0
+      } else state.ryoMood.pending.push('huff')
+    }
     return state.ryoAction
   }
   if (action === 'miss') {

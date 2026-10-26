@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createRowing, row, tickRowing } from '../src/games/rowing/model.ts'
+import { createRowing, row, tickRowing, ryoForwardChance } from '../src/games/rowing/model.ts'
 import { createRyoMood, openingRyoAction, tickRyoMood, RYO_MOOD_LINES } from '../src/games/rowing/ryo-mood.ts'
 
 function scene() { const s = createRowing(); s.couples = []; s.trafficNextAt = Infinity; s.coupleChatNextAt = Infinity; return s }
@@ -18,19 +18,47 @@ test('opening cooperates exactly three times, then visibly refuses without pushi
   assert.equal(row(s, 'shiro'), 'stroke', 'Shiro still responds independently')
 })
 
-test('sparse clicks leave the strike intact, four close requests provoke one line then one reverse', () => {
+test('four consecutive refusals provoke one line, then the first reverse says huff once', () => {
   const s = scene(); tired(s); wait(s, 3)
-  for (let i = 0; i < 5; i++) { assert.equal(row(s, 'ryo'), 'refuse'); wait(s, 2.1) }
+  for (let i = 0; i < 5; i++) { assert.equal(row(s, 'ryo', () => .99), 'refuse'); wait(s, 2.1) }
   assert.equal(s.ryoMood.phase, 'strike')
-  for (let i = 0; i < 4; i++) { assert.equal(row(s, 'ryo'), 'refuse'); wait(s, .6) }
+  for (let i = 0; i < 4; i++) { assert.equal(row(s, 'ryo', () => .99), 'refuse'); wait(s, .6) }
   assert.equal(s.ryoMood.speech, 'protest')
   assert.equal(RYO_MOOD_LINES.protest, '你让我划我就划吗？？')
   for (let i = 0; i < 3; i++) { assert.equal(row(s, 'ryo'), 'refuse'); wait(s, .6) }
   wait(s, 3)
   assert.equal(row(s, 'ryo', () => .99), 'reverse')
-  for (let i = 0; i < 10; i++) { wait(s, .6); assert.equal(row(s, 'ryo', () => 0), 'refuse') }
-  wait(s, 3); assert.equal(row(s, 'ryo', () => 0), 'reverse')
+  assert.equal(s.ryoMood.speech, 'huff'); assert.equal(RYO_MOOD_LINES.huff, '哼！')
+  for (let i = 0; i < 10; i++) { wait(s, .6); assert.equal(row(s, 'ryo', () => ryoForwardChance(s.minutes) + .05), 'refuse') }
+  wait(s, 3); assert.equal(row(s, 'ryo', () => ryoForwardChance(s.minutes) + .05), 'reverse')
   assert.equal(s.ryoMood.pending.length, 0); assert.equal(s.ryoMood.speech, null)
+})
+
+test('after resting, both strike and mischief allow the increasing first-night forward probability', () => {
+  for (const phase of ['strike', 'mischief']) for (const hour of [18, 19, 20, 21]) {
+    let strokes = 0
+    for (let i = 0; i < 2000; i++) {
+      const s = scene(); s.minutes = hour * 60; s.ryoMood.phase = phase
+      if (row(s, 'ryo', () => (i + .5) / 2000) === 'stroke') strokes++
+    }
+    assert.equal(strokes, ryoForwardChance(hour * 60) * 2000)
+    assert.ok(strokes >= 500 && strokes <= 1000)
+  }
+  const s = scene(); tired(s); wait(s, 3)
+  assert.equal(row(s, 'ryo', () => .1), 'stroke', 'Resting does not disable forward strokes until 22:00')
+})
+
+test('first reverse after 22:00 still speaks automatically without stopping either rower', () => {
+  const s = scene(); s.minutes = 23 * 60; s.effort = true; s.eveningSeen = true
+  assert.equal(row(s, 'ryo', () => .52), 'reverse'); assert.equal(s.ryoMood.speech, 'huff')
+  assert.equal(row(s, 'shiro'), 'stroke'); wait(s, .6)
+  assert.equal(row(s, 'ryo', () => .1), 'stroke')
+  wait(s, 1.3); assert.equal(s.ryoMood.speech, null)
+  assert.equal(row(s, 'ryo', () => .52), 'reverse'); assert.equal(s.ryoMood.speech, null)
+  const pending = scene(); pending.minutes = 23 * 60; pending.effort = true; pending.eveningSeen = true
+  pending.dialogue = 0
+  assert.equal(row(pending, 'ryo', () => .52), 'reverse'); assert.deepEqual(pending.ryoMood.pending, ['huff'])
+  wait(pending, 6.5); assert.equal(pending.ryoMood.speech, 'huff')
 })
 
 test('pending mood speech waits for ongoing dialogue and pauses in background', () => {

@@ -200,7 +200,7 @@ test('first evening guarantees one nearby chief greeting after 22:00, then later
     for (let i = 0; i < 100; i++) tickRowing(g, .1, () => 0)
     assert.equal(g.chiefVisit, null, 'No second guaranteed chief or random first-night chain')
     // This assertion concerns a visible boat's nightly draw; random motion may have taken the fixture offscreen.
-    g.couples[0].y = g.cameraY + 200; g.couples[0].x = 90
+    g.couples[0].y = g.cameraY + 200; g.couples[0].x = 90; g.couples[0].departing = false
     g.eveningSeen = true; g.minutes = 43 * 60
     tickRowing(g, .01, () => .999); assert.equal(g.chiefVisit, null)
     assert.equal(g.couples[0].chiefChecked, true)
@@ -363,7 +363,7 @@ test('recycled boats get a fresh chief draw and no visit survives recycling or a
 
 test('rowing starts at 18:00 in night scenery without an immediate go-home line', () => {
   const g = createRowing()
-  assert.equal(clockAt(g.minutes), '18:00'); assert.equal(periodAt(g.minutes), 'night'); assert.equal(ryoForwardChance(g.minutes), 0)
+  assert.equal(clockAt(g.minutes), '18:00'); assert.equal(periodAt(g.minutes), 'night'); assert.equal(ryoForwardChance(g.minutes), .25)
   wait(g, 10)
   assert.equal(clockAt(g.minutes), '18:30')
   assert.equal(g.dialogue, null); assert.equal(g.effort, false)
@@ -405,8 +405,8 @@ test('later effort draws are independent of tapping rhythm with only 5 percent r
   assert.ok(strong.speed > normal.speed); assert.ok(Math.abs(strong.spin) > Math.abs(normal.spin))
 })
 
-test('19–22 ramps 0–50%; subsequent days drop to 30% at 06:00 and return to 50% at 18:00', () => {
-  for (const [hour, expected] of [[19, 0], [19.6, .1], [20.5, .25], [21.4, .4], [22, .5], [24, .5], [29.99, .5], [30, .3], [36, .3], [41.99, .3], [42, .5], [46, .5], [48, .5], [54, .3], [66, .5]]) {
+test('18–22 ramps 25–50%; subsequent days drop to 30% at 06:00 and return to 50% at 18:00', () => {
+  for (const [hour, expected] of [[18, .25], [19, .3125], [20, .375], [21, .4375], [22, .5], [24, .5], [29.99, .5], [30, .3], [36, .3], [41.99, .3], [42, .5], [46, .5], [48, .5], [54, .3], [66, .5]]) {
     assert.ok(Math.abs(ryoForwardChance(hour * 60) - expected) < 1e-10)
     for (const effort of [false, true]) {
       const counts = { stroke: 0, strong: 0, refuse: 0, push: 0, reverse: 0, miss: 0 }
@@ -417,7 +417,7 @@ test('19–22 ramps 0–50%; subsequent days drop to 30% at 06:00 and return to 
       assert.equal(counts.stroke + counts.strong, Math.round(expected * 2000))
       assert.ok(counts.stroke + counts.strong <= 1000)
       if (effort) { assert.equal(counts.refuse + counts.push, 0); assert.equal(counts.reverse, 100); assert.equal(counts.miss, 1900 - Math.round(expected * 2000)) }
-      else { assert.equal(counts.refuse, counts.push); assert.equal(counts.reverse, 0) }
+      else { assert.ok(Math.abs(counts.refuse - counts.push) <= 1); assert.equal(counts.reverse, 0) }
     }
   }
   let previous = 0
