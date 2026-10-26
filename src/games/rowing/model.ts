@@ -21,7 +21,7 @@ export const COMPLAINTS = ['啊！', '小心一点，没素质的家伙！', '�
 export const APOLOGIES = ['不好意思。', '真的非常不好意思。', '非常抱歉，我们会注意的。']
 export const CHIEF_SURNAMES = ['佐藤', '铃木', '高桥', '田中', '渡边', '伊藤', '山本', '中村', '小林', '加藤', '吉田']
 export interface Encounter { boatId: number; complaint: string; apology: string; age: number }
-export interface ChiefVisit { boatId: number; surname: string; line: number; age: number; masked: boolean; done: boolean }
+export interface ChiefVisit { boatId: number; surname: string; line: number; age: number; masked: boolean; done: boolean; holdX?: number; holdY?: number }
 export function chiefLines(surname: string) {
   return [
     { who: 'couple', speaker: surname, text: '咦，这不是宇都木吗？' },
@@ -103,12 +103,17 @@ export function complaintSeconds(encounter: Encounter) { return Math.max(2.6, Ar
 
 function updateTraffic(state: RowingState, random: () => number) {
   const hour = state.minutes / 60 % 24, target = coupleTarget(state.minutes)
-  if (hour < 6 && !calendarAt(state.minutes).allDayRomance) { state.couples = []; state.encounter = null; state.chiefVisit = null; state.coupleChat = null; return }
+  const storyBoat = state.chiefVisit?.boatId
+  if (hour < 6 && !calendarAt(state.minutes).allDayRomance) {
+    state.couples = state.couples.filter(boat => boat.id === storyBoat)
+    if (state.encounter?.boatId !== storyBoat) state.encounter = null
+    state.coupleChat = null; return
+  }
   if (state.elapsed < state.trafficNextAt) return
   state.trafficNextAt = state.elapsed + 2
   const active = state.couples.filter(b => !b.departing).sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))
-  for (const boat of active.slice(target)) departCouple(boat, state, 'closing')
-  state.couples = state.couples.filter(b => b.departing ? coupleVisible(b, state.cameraY, state.cameraX) : b.y >= state.cameraY - 260 && b.y <= state.cameraY + 1250 && b.x >= state.cameraX - 260 && b.x <= state.cameraX + 650)
+  for (const boat of active.slice(target)) if (boat.id !== storyBoat) departCouple(boat, state, 'closing')
+  state.couples = state.couples.filter(b => b.id === storyBoat || (b.departing ? coupleVisible(b, state.cameraY, state.cameraX) : b.y >= state.cameraY - 260 && b.y <= state.cameraY + 1250 && b.x >= state.cameraX - 260 && b.x <= state.cameraX + 650))
   if (state.couples.length < target) {
     const preferTop = state.nextCoupleId % 2 === 0
     for (const fromTop of [preferTop, !preferTop]) {
@@ -277,6 +282,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   // A tight turn spends force on circling, not forward travel.
   const travel = state.speed * dt / (1 + Math.abs(state.spin) * 2.4)
   const previousX = state.x, previousY = state.y
+  const previousCameraX = state.cameraX, previousCameraY = state.cameraY
   state.x += Math.sin(state.heading) * travel
   state.y += -Math.cos(state.heading) * travel + 6 * dt
   state.distance += Math.abs(travel)
@@ -298,7 +304,17 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
     state.dialogue !== null || Boolean(state.encounter) || Boolean(state.daily.chat) || Boolean(state.chiefVisit && !state.chiefVisit.done))
   if (state.calendar.chat) state.laughUntil = 0
   for (const boat of state.couples) {
-    moveCouple(boat, { ...movingPlayer, spin: state.spin }, state.elapsed, dt, state.couples, state.minutes, state.cameraX)
+    const talking = state.chiefVisit?.boatId === boat.id && !state.chiefVisit.done
+    boat.chiefTalking = talking
+    let hold: { x: number; y: number } | undefined
+    if (talking) {
+      const visit = state.chiefVisit!
+      visit.holdX ??= Math.max(60, Math.min(330, boat.x - previousCameraX))
+      visit.holdY ??= Math.max(140, Math.min(560, boat.y - previousCameraY))
+      boat.x += state.cameraX - previousCameraX; boat.y += state.cameraY - previousCameraY
+      hold = { x: state.cameraX + visit.holdX, y: state.cameraY + visit.holdY }
+    }
+    moveCouple(boat, { ...movingPlayer, spin: state.spin }, state.elapsed, dt, state.couples, state.minutes, state.cameraX, hold)
     // Later evenings redraw once per visible boat per night, never every frame.
     const night = Math.floor(state.minutes / 1440)
     if (night > 0 && chiefHours(state.minutes) && coupleVisible(boat, state.cameraY, state.cameraX)) {
@@ -328,6 +344,11 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
         state.spin = Math.max(-2.5, Math.min(2.5, state.spin + nx * .22))
       }
     }
+    if (talking) {
+      // Edge guard also covers collision separation: finish talking before leaving the view.
+      boat.x = Math.max(state.cameraX + 30, Math.min(state.cameraX + 360, boat.x))
+      boat.y = Math.max(state.cameraY + 100, Math.min(state.cameraY + 600, boat.y))
+    }
   }
   const speakingBoat = state.couples.find(candidate => candidate.id === state.encounter?.boatId)
   if (!speakingBoat || !coupleVisible(speakingBoat, state.cameraY, state.cameraX)) state.encounter = null
@@ -345,7 +366,10 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
       if (visit.age >= (visit.line === 1 ? 1.2 : 3.6)) {
         visit.age = 0; visit.line++
         if (visit.line >= 2) visit.masked = true
-        if (visit.line >= chiefLines(visit.surname).length) visit.done = true
+        if (visit.line >= chiefLines(visit.surname).length) {
+          visit.done = true; boat.chiefTalking = false; boat.departing = false
+          departCouple(boat, state, 'closing')
+        }
       }
     }
   }
@@ -353,7 +377,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   // The first encounter waits until around 22:00, after the existing go-home exchange.
   const chiefWindow = firstNight ? state.minutes >= EVENING_MINUTE && state.minutes < 23.5 * 60 : chiefHours(state.minutes)
   if (!state.calendar.chat && !state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && !state.ryoMood.speech && chiefWindow) {
-    const boat = state.couples.filter(candidate => coupleVisible(candidate, state.cameraY, state.cameraX)
+    const boat = state.couples.filter(candidate => !candidate.departing && candidate.x >= state.cameraX + 30 && candidate.x <= state.cameraX + 360 && candidate.y >= state.cameraY + 100 && candidate.y <= state.cameraY + 600
       && (firstNight ? !state.firstChiefSeen : candidate.chiefSurname && !candidate.chiefGreeted))
       .sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))[0]
     if (boat) {
@@ -362,6 +386,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
         boat.chiefChecked = true; boat.chiefNight = 0; state.firstChiefSeen = true
       }
       boat.chiefGreeted = true
+      boat.chiefTalking = true
       state.chiefVisit = { boatId: boat.id, surname: boat.chiefSurname!, line: 0, age: 0, masked: false, done: false }
       state.laughUntil = 0
     }

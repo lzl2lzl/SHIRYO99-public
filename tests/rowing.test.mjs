@@ -320,7 +320,7 @@ test('chief visit never blocks either rower and pauses speech beneath collision/
   g.dialogue = null; wait(g, .2); assert.ok(g.chiefVisit.age > age)
 })
 
-test('chief boat leaving any edge cancels remaining lines and mosaic, including completed visits', () => {
+test('chief boat stays visible until dialogue completes; departing afterward clears the mosaic', () => {
   for (const line of [0, 1, 2, 9]) for (const direction of ['top', 'bottom', 'left', 'right']) {
     const g = chiefScene(); Object.assign(g.chiefVisit, { line, masked: line >= 2, done: line === 9 })
     const boat = g.couples[0]
@@ -329,7 +329,10 @@ test('chief boat leaving any edge cancels remaining lines and mosaic, including 
     if (direction === 'left') boat.x = -180
     if (direction === 'right') boat.x = 570
     tickRowing(g, .01, () => .99)
-    assert.equal(g.chiefVisit, null); assert.equal(coupleVisible(boat, g.cameraY), false)
+    if (line < 9) {
+      assert.ok(g.chiefVisit); assert.equal(g.chiefVisit.line, line)
+      assert.equal(coupleVisible(boat, g.cameraY, g.cameraX), true)
+    } else { assert.equal(g.chiefVisit, null); assert.equal(coupleVisible(boat, g.cameraY, g.cameraX), false) }
   }
   const g = chiefScene(); g.couples[0].y = g.cameraY - 159
   assert.equal(coupleVisible(g.couples[0], g.cameraY), true)
@@ -349,7 +352,9 @@ test('chief collision always says ah and uses the most polite apology, even befo
 
 test('recycled boats get a fresh chief draw and no visit survives recycling or a new game', () => {
   const g = chiefScene(); const oldId = g.couples[0].id
+  g.chiefVisit.done = true
   g.trafficNextAt = 0; g.couples[0].y = -400; tickRowing(g, .01, () => .99)
+  g.trafficNextAt = 0; tickRowing(g, .01, () => .99)
   assert.equal(g.chiefVisit, null); assert.notEqual(g.couples[0].id, oldId); assert.equal(g.couples[0].chiefChecked, undefined)
   g.couples[0].y = g.cameraY + 200
   const draws = [.01, .999]; tickRowing(g, .01, () => draws.shift())

@@ -9,6 +9,7 @@ export interface CoupleMotion {
 export interface CoupleBoat {
   id: number; x: number; y: number; heading: number; motion?: CoupleMotion
   chiefChecked?: boolean; chiefSurname?: string; chiefGreeted?: boolean; chiefNight?: number
+  chiefTalking?: boolean
   departing?: boolean; departureReason?: 'collision' | 'spin' | 'closing'; departureRemark?: boolean
   accidentalContact?: boolean; nextChatAt?: number; strokePhase?: number; stopped?: boolean
 }
@@ -49,7 +50,7 @@ export function hullContact(a: Hull, b: Hull) {
   return best
 }
 export function departCouple(boat: CoupleBoat, player: Hull, reason: 'collision' | 'spin' | 'closing') {
-  if (boat.departing) return
+  if (boat.departing || boat.chiefTalking) return
   boat.departing = true; boat.departureReason = reason
   const motion = boat.motion ??= createCoupleMotion()
   motion.direction = boat.y >= player.y ? 1 : -1
@@ -57,7 +58,7 @@ export function departCouple(boat: CoupleBoat, player: Hull, reason: 'collision'
 }
 
 /** Boat-sized collision capsules, individual rowing strokes, and a persistent route away from trouble. */
-export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; velocityX?: number; velocityY?: number }, elapsed: number, dt: number, peers: CoupleBoat[] = [], minutes = RIVER_START_MINUTE, cameraX = 0) {
+export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; velocityX?: number; velocityY?: number }, elapsed: number, dt: number, peers: CoupleBoat[] = [], minutes = RIVER_START_MINUTE, cameraX = 0, hold?: { x: number; y: number }) {
   if (!Number.isFinite(dt) || dt <= 0) return
   dt = Math.min(dt, .1)
   const motion = boat.motion ??= createCoupleMotion()
@@ -70,8 +71,12 @@ export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; vel
   let vy = motion.direction * (boat.departing ? 38 : boat.stopped ? .8 : motion.speed * (.82 + .18 * Math.sin(boat.strokePhase)))
   if (boat.stopped) vx *= .06
   if (motion.style === 'wobbly' && !boat.departing) vx += Math.sin(elapsed * .9 + motion.phase) * 8
+  if (hold) {
+    vx = (hold.x - boat.x) * .8; vy = (hold.y - boat.y) * .8
+    boat.stopped = Math.hypot(vx, vy) < 2
+  }
   const accidental = motion.style === 'distracted' && !boat.accidentalContact && !boat.departing && !boat.chiefSurname
-  if (!accidental && !boat.stopped && hullContact(player, boat).distance < 190) {
+  if (!hold && !accidental && !boat.stopped && hullContact(player, boat).distance < 190) {
     // Yield along the river before the two full-sized hulls get stuck abreast.
     const away = boat.y >= player.y ? 1 : -1
     motion.direction = away
@@ -80,7 +85,7 @@ export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; vel
   for (const peer of peers) {
     if (peer.id === boat.id || !peer.motion || hullContact(peer, boat).distance >= 190) continue
     // Give a departing boat room without turning every incoming boat back at the river entrance.
-    if (!boat.departing && peer.departing && motion.direction !== peer.motion.direction) {
+    if (!hold && !boat.departing && peer.departing && motion.direction !== peer.motion.direction) {
       motion.direction = peer.motion.direction
       vy = motion.direction * Math.max(Math.abs(vy), peer.departing ? 30 : 18)
       boat.stopped = false
@@ -111,7 +116,7 @@ export function moveCouple(boat: CoupleBoat, player: Hull & { spin?: number; vel
     const before = hullContact(obstacle, { x: oldX, y: oldY, heading: oldHeading }).distance
     return hullContact(obstacle, { x, y, heading }).distance >= Math.min(obstacle === player ? clearance : CLEARANCE, before) - 1e-6
   })
-  const target = Math.atan2(vx, -vy), turn = Math.atan2(Math.sin(target - boat.heading), Math.cos(target - boat.heading))
+  const target = hold && speed < 2 ? boat.heading : Math.atan2(vx, -vy), turn = Math.atan2(Math.sin(target - boat.heading), Math.cos(target - boat.heading))
   let heading = boat.heading + Math.max(-.7 * dt, Math.min(.7 * dt, turn))
   if (!safe(oldX, oldY, heading)) heading = oldHeading
   let fraction = 1
