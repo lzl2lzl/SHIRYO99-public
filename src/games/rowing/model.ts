@@ -1,6 +1,7 @@
 import { createDailyDialogue, tickDailyDialogue, type DailyDialogue } from './daily-dialogue.ts'
 import { calendarAt, CALENDAR_EPOCH } from './calendar.ts'
 import { riverHalfWidth } from './river.ts'
+import { createRyoMood, openingRyoAction, tickRyoMood, type RyoMood } from './ryo-mood.ts'
 import { createCalendarDialogue, tickCalendarDialogue, type CalendarDialogue } from './calendar-dialogue.ts'
 import { COUPLE_COUNT, CONTACT_DISTANCE, createCouple, createCoupleMotion, moveCouple, departCouple, hullContact, coupleVisible, coupleTarget, riverCenter, type CoupleBoat } from './couples.ts'
 import { COUPLE_LINES, coupleLineSeconds, pickCoupleChat, type CoupleChat } from './couple-dialogue.ts'
@@ -59,6 +60,7 @@ export interface RowingState {
   ryoAction: RowAction
   shiroUntil: number
   ryoUntil: number
+  ryoMood: RyoMood
   laughUntil: number
   shiroStrokes: number
   ryoStrokes: number
@@ -89,7 +91,7 @@ export function createRowing(random: () => number = Math.random, withOpening = f
     elapsed: 0, minutes: START_MINUTE, x: 195, y: withOpening ? 480 : 370, heading: Math.PI, spin: 0, speed: 0,
     effort: false, eveningSeen: false, dialogue: null, dialogueAge: 0,
     lastShiro: -100, lastRyo: -100, shiroAction: 'rest', ryoAction: 'rest',
-    shiroUntil: 0, ryoUntil: 0, laughUntil: 0, shiroStrokes: 0, ryoStrokes: 0,
+    shiroUntil: 0, ryoUntil: 0, ryoMood: createRyoMood(), laughUntil: 0, shiroStrokes: 0, ryoStrokes: 0,
     taps: 0, distance: 0, turnTravel: 0, trail: [], trailTimer: 0,
     cameraX: 0, cameraY: 0, couples: [-740, -480, -240, 240, 480, 720, 960].map((offset, id) => createCouple(id, (withOpening ? 480 : 370) + offset, random)),
     nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, firstChiefSeen: false, daily: createDailyDialogue(), collisionCooldown: 0, collisions: 0,
@@ -122,7 +124,7 @@ function updateTraffic(state: RowingState, random: () => number) {
 }
 
 function tickCoupleChat(state: RowingState, dt: number, random: () => number) {
-  const busy = state.calendar.chat || state.dialogue !== null || state.encounter || state.daily.chat || (state.chiefVisit && !state.chiefVisit.done)
+  const busy = state.calendar.chat || state.dialogue !== null || state.encounter || state.daily.chat || state.ryoMood.speech || (state.chiefVisit && !state.chiefVisit.done)
   const chat = state.coupleChat, boat = state.couples.find(b => b.id === chat?.boatId)
   if (chat && (busy || !boat || !coupleVisible(boat, state.cameraY, state.cameraX))) {
     state.coupleChat = null; state.coupleChatNextAt = state.elapsed + 5
@@ -133,7 +135,7 @@ function tickCoupleChat(state: RowingState, dt: number, random: () => number) {
       if (chat.line >= chat.lines.length) { state.coupleChat = null; state.coupleChatNextAt = state.elapsed + 10 + random() * 8 }
     }
   }
-  if (busy || state.coupleChat || state.elapsed < state.coupleChatNextAt) return
+  if (busy || state.coupleChat || state.ryoMood.pending.length || state.elapsed < state.coupleChatNextAt) return
   const candidates = state.couples.filter(b => !b.chiefSurname && coupleVisible(b, state.cameraY, state.cameraX) && b.y > state.cameraY + 100 && b.y < state.cameraY + 600
     && state.elapsed >= (b.nextChatAt ?? 0) && (!b.departing || (b.departureReason !== 'closing' && !b.departureRemark)))
   const speaker = candidates.find(b => b.departing) ?? candidates[Math.min(candidates.length - 1, Math.floor(random() * candidates.length))]
@@ -190,18 +192,18 @@ export function chiefHours(minutes: number) {
 export function chooseRyoAction(minutes: number, effort: boolean, draw: number): RowAction {
   const chance = Math.max(0, Math.min(.9999, draw)), forward = ryoForwardChance(minutes)
   if (chance < forward) return chance >= forward * .8 ? 'strong' : 'stroke'
-  if (effort) return chance < forward + .15 ? 'reverse' : 'miss'
+  if (effort) return chance < forward + .05 ? 'reverse' : 'miss'
   return chance < forward + (1 - forward) / 2 ? 'refuse' : 'push'
 }
 
 /** Admit one complete exchange; ambient collision speech cannot interrupt a conversation. */
 function canStartBoatSpeech(state: RowingState) {
-  return !state.opening && !state.calendar.chat && state.dialogue === null && !state.encounter
+  return !state.opening && !state.calendar.chat && state.dialogue === null && !state.encounter && !state.ryoMood.speech
     && (!state.daily.chat || state.daily.chat.kind === 'random')
     && (!state.chiefVisit || state.chiefVisit.done)
 }
 
-/** Independent weighted draws: no sequence, pity counter, or dependence on tapping rhythm. */
+/** The first outing has a short cooperative start and a strike; later effort retains independent draws. */
 export function row(state: RowingState, who: Rower, random: () => number = Math.random): RowAction | null {
   if (state.opening) return null
   const since = state.elapsed - (who === 'shiro' ? state.lastShiro : state.lastRyo)
@@ -213,7 +215,9 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
     return 'stroke'
   }
   state.lastRyo = state.elapsed
-  const action = chooseRyoAction(state.minutes, state.effort, random())
+  const action = state.minutes < EVENING_MINUTE && !state.effort
+    ? openingRyoAction(state.ryoMood, state.elapsed, random)
+    : chooseRyoAction(state.minutes, state.effort, random())
   if (action === 'stroke' || action === 'strong') {
     impulse(state, who, false, action === 'strong' ? 1.45 : 1)
     return state.ryoAction
@@ -227,7 +231,8 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
     return 'miss'
   }
   if (action === 'refuse') {
-    state.ryoAction = 'refuse'; state.ryoUntil = state.elapsed + .85
+    // Repeated refusals must not postpone queued speech or create a fake stroke animation.
+    state.ryoAction = 'refuse'; state.ryoUntil = state.elapsed
     return 'refuse'
   }
   state.ryoAction = 'push'; state.ryoUntil = state.elapsed + .8
@@ -327,7 +332,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   const speakingBoat = state.couples.find(candidate => candidate.id === state.encounter?.boatId)
   if (!speakingBoat || !coupleVisible(speakingBoat, state.cameraY, state.cameraX)) state.encounter = null
   tickDailyDialogue(state.daily, previousMinutes, state.minutes, dt,
-    Boolean(state.calendar.chat) || state.dialogue !== null || Boolean(state.encounter) || Boolean(state.chiefVisit && !state.chiefVisit.done), random)
+    Boolean(state.calendar.chat) || state.dialogue !== null || Boolean(state.encounter) || Boolean(state.ryoMood.speech) || Boolean(state.chiefVisit && !state.chiefVisit.done), random)
   if (state.daily.chat) state.laughUntil = 0
   const visit = state.chiefVisit
   if (visit) {
@@ -347,7 +352,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   const firstNight = state.minutes < 1440
   // The first encounter waits until around 22:00, after the existing go-home exchange.
   const chiefWindow = firstNight ? state.minutes >= EVENING_MINUTE && state.minutes < 23.5 * 60 : chiefHours(state.minutes)
-  if (!state.calendar.chat && !state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && chiefWindow) {
+  if (!state.calendar.chat && !state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && !state.ryoMood.speech && chiefWindow) {
     const boat = state.couples.filter(candidate => coupleVisible(candidate, state.cameraY, state.cameraX)
       && (firstNight ? !state.firstChiefSeen : candidate.chiefSurname && !candidate.chiefGreeted))
       .sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))[0]
@@ -362,6 +367,9 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
     }
   }
   tickCoupleChat(state, dt, random)
+  tickRyoMood(state.ryoMood, dt, state.elapsed, state.ryoUntil,
+    Boolean(state.calendar.chat || state.encounter || state.daily.chat || state.coupleChat || (state.chiefVisit && !state.chiefVisit.done)) || state.dialogue !== null,
+    state.effort || state.minutes >= EVENING_MINUTE)
   for (const point of state.trail) point.age += dt
   state.trail = state.trail.filter(point => point.age < 3)
   state.trailTimer += dt

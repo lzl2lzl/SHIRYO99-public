@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance, CHIEF_SURNAMES, chiefLines, coupleVisible, createCoupleMotion, moveCouple, riverCenter } from '../src/games/rowing/model.ts'
+import { createRowing, row, tickRowing, clockAt, periodAt, EVENING_LINES, COMPLAINTS, APOLOGIES, COUPLE_COUNT, ryoForwardChance, CHIEF_SURNAMES, chiefLines, coupleVisible, createCoupleMotion, moveCouple, riverCenter, chooseRyoAction } from '../src/games/rowing/model.ts'
 import { overlaps, placeResponse, rowingBounds } from '../src/games/rowing/bubble-layout.ts'
 import { hullContact, coupleTarget, departCouple, createCouple } from '../src/games/rowing/couples.ts'
 import { COUPLE_LINES, pickCoupleChat, coupleLineSeconds } from '../src/games/rowing/couple-dialogue.ts'
@@ -382,10 +382,10 @@ test('Ryo can cooperate, refuse or push before going home; the retained morning 
   }
 })
 
-test('each draw is independent of tapping rhythm and previous actions; 19:00 has zero forward chance', () => {
-  const counts = { stroke: 0, strong: 0, refuse: 0, push: 0 }
+test('later effort draws are independent of tapping rhythm with only 5 percent reverse', () => {
+  const counts = { stroke: 0, strong: 0, reverse: 0, miss: 0 }
   for (let i = 0; i < 1000; i++) {
-    const fast = createRowing(), slow = createRowing()
+    const fast = createRowing(), slow = createRowing(); fast.minutes = slow.minutes = 24 * 60; fast.effort = slow.effort = true
     fast.elapsed = .6; fast.lastRyo = 0; fast.ryoAction = 'push'
     slow.elapsed = 50; slow.lastRyo = 0; slow.ryoAction = 'stroke'
     const draw = (i + .5) / 1000
@@ -393,7 +393,7 @@ test('each draw is independent of tapping rhythm and previous actions; 19:00 has
     assert.equal(row(slow, 'ryo', () => draw), action)
     counts[action]++
   }
-  assert.deepEqual(counts, { stroke: 0, strong: 0, refuse: 500, push: 500 })
+  assert.deepEqual(counts, { stroke: 400, strong: 100, reverse: 50, miss: 450 })
   const normal = createRowing(), strong = createRowing()
   normal.minutes = strong.minutes = 22 * 60
   row(normal, 'ryo', () => .1); row(strong, 'ryo', () => .45)
@@ -407,11 +407,11 @@ test('19–22 ramps 0–50%; subsequent days drop to 30% at 06:00 and return to 
       const counts = { stroke: 0, strong: 0, refuse: 0, push: 0, reverse: 0, miss: 0 }
       for (let i = 0; i < 2000; i++) {
         const g = createRowing(); g.minutes = hour * 60; g.effort = effort
-        counts[row(g, 'ryo', () => (i + .5) / 2000)]++
+        counts[chooseRyoAction(g.minutes, effort, (i + .5) / 2000)]++
       }
       assert.equal(counts.stroke + counts.strong, Math.round(expected * 2000))
       assert.ok(counts.stroke + counts.strong <= 1000)
-      if (effort) { assert.equal(counts.refuse + counts.push, 0); assert.equal(counts.reverse, 300); assert.equal(counts.miss, 1700 - Math.round(expected * 2000)) }
+      if (effort) { assert.equal(counts.refuse + counts.push, 0); assert.equal(counts.reverse, 100); assert.equal(counts.miss, 1900 - Math.round(expected * 2000)) }
       else { assert.equal(counts.refuse, counts.push); assert.equal(counts.reverse, 0) }
     }
   }
@@ -426,7 +426,7 @@ test('19–22 ramps 0–50%; subsequent days drop to 30% at 06:00 and return to 
 
 test('one-sided effort circles; matched strokes cancel turning and travel further', () => {
   const circle = createRowing(), forward = createRowing()
-  circle.minutes = forward.minutes = 20 * 60
+  circle.minutes = forward.minutes = 24 * 60; circle.effort = forward.effort = true; circle.eveningSeen = forward.eveningSeen = true
   circle.couples = []; forward.couples = []
   circle.trafficNextAt = forward.trafficNextAt = Infinity
   for (let i = 0; i < 30; i++) {
@@ -450,7 +450,7 @@ test('evening lines expire automatically while time, movement and both rowers co
   assert.equal(g.dialogue, 0); assert.ok(g.minutes > startTime); assert.ok(g.y > startY)
   assert.equal(g.effort, false)
   wait(g, .3); assert.equal(g.dialogue, 1); assert.equal(g.effort, true)
-  assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(row(g, 'ryo', () => .6), 'reverse')
+  assert.equal(row(g, 'shiro'), 'stroke'); assert.equal(row(g, 'ryo', () => .52), 'reverse')
   wait(g, 3.2); assert.equal(g.dialogue, null); assert.equal(g.effort, true)
   assert.ok(g.minutes > 1338); assert.ok(g.cameraY > 0)
 })
@@ -493,7 +493,7 @@ test('invalid time is ignored; large delta cannot catch up a background tab; tra
 
 test('river camera follows unbounded forward and backward travel instead of an invisible wall', () => {
   for (const heading of [0, Math.PI]) {
-    const g = createRowing(); g.minutes = 20 * 60; g.couples = []; g.trafficNextAt = Infinity; g.heading = heading
+    const g = createRowing(); g.minutes = 24 * 60; g.effort = true; g.eveningSeen = true; g.couples = []; g.trafficNextAt = Infinity; g.heading = heading
     for (let i = 0; i < 120; i++) { row(g, 'shiro'); row(g, 'ryo', () => 0); wait(g, .6) }
     assert.ok(heading === 0 ? g.y < -1000 : g.y > 2000)
     assert.ok(Math.abs(g.y - g.cameraY - 370) < 22)
