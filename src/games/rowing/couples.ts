@@ -13,7 +13,7 @@ export interface CoupleBoat {
   departing?: boolean; departureReason?: 'collision' | 'spin' | 'closing'; departureRemark?: boolean
   accidentalContact?: boolean; nextChatAt?: number; strokePhase?: number; stopped?: boolean
 }
-export interface Hull { x: number; y: number; heading: number }
+export interface Hull { x: number; y: number; heading: number; scale?: number }
 export const COUPLE_COUNT = 7
 export const CONTACT_DISTANCE = 110
 export const CLEARANCE = 128
@@ -39,7 +39,7 @@ export function createCouple(id: number, y: number, random: () => number = Math.
   return { id, x: trafficCenter(y, minutes, cameraX) + motion.lane, y, heading: motion.direction > 0 ? Math.PI : 0, motion }
 }
 function samples(hull: Hull) {
-  return [-40, 0, 40].map(offset => ({ x: hull.x + Math.sin(hull.heading) * offset, y: hull.y - Math.cos(hull.heading) * offset }))
+  return [-40, 0, 40].map(offset => ({ x: hull.x + Math.sin(hull.heading) * offset * (hull.scale ?? 1), y: hull.y - Math.cos(hull.heading) * offset * (hull.scale ?? 1) }))
 }
 export function hullContact(a: Hull, b: Hull) {
   let best = { dx: b.x - a.x, dy: b.y - a.y, distance: Infinity }
@@ -47,6 +47,7 @@ export function hullContact(a: Hull, b: Hull) {
     const dx = q.x - p.x, dy = q.y - p.y, distance = Math.hypot(dx, dy)
     if (distance < best.distance) best = { dx, dy, distance }
   }
+  best.distance -= 55 * ((a.scale ?? 1) + (b.scale ?? 1) - 2)
   return best
 }
 export function departCouple(boat: CoupleBoat, player: Hull, reason: 'collision' | 'spin' | 'closing') {

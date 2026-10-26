@@ -4,19 +4,24 @@ import { riverScale, riverHalfWidth, riverCenter, trafficCenter, RIVER_START_MIN
 import { bankX, bankPath } from '../src/games/rowing/scenery.ts'
 import { createRowing, tickRowing } from '../src/games/rowing/model.ts'
 import { createCouple, coupleTarget, coupleVisible } from '../src/games/rowing/couples.ts'
+import { SPACE_MILESTONES, upgradeAt } from '../src/games/rowing/progression/catalog.ts'
 
-test('river grows continuously from embarkation: seven full days are 1.5×, later growth slows', () => {
+test('river grows faster toward each skill stage without a jump when the upgrade arrives', () => {
   const at = days => RIVER_START_MINUTE + days * 1440
   assert.equal(riverScale(at(0)), 1)
   assert.equal(riverScale(at(-1)), 1)
-  assert.equal(riverScale(at(7)), 1.5)
-  assert.equal(riverScale(at(21)), 2)
+  assert.ok(riverScale(at(7)) >= 1.8)
+  assert.ok(riverScale(at(21)) > 2)
   assert.ok(riverScale(at(365)) > riverScale(at(21)))
-  assert.ok(riverScale(at(14)) - riverScale(at(7)) < .5)
-  for (const day of [1, 7, 21, 365]) assert.ok(Math.abs(riverScale(at(day) + .001) - riverScale(at(day) - .001)) < .00001)
+  for (const milestone of SPACE_MILESTONES.slice(1)) {
+    assert.equal(riverScale(upgradeAt(milestone.week)), milestone.scale)
+    assert.ok(Math.abs(riverScale(upgradeAt(milestone.week) + .001) - riverScale(upgradeAt(milestone.week) - .001)) < .00001)
+  }
+  let previous = 1
+  for (let day = 0; day <= 365; day += .5) { const scale = riverScale(at(day)); assert.ok(scale >= previous); previous = scale }
   for (const y of [-1000, 0, 370, 6000]) for (const right of [false, true]) {
     const shift = bankX(y, right, at(7)) - bankX(y, right, at(0))
-    assert.ok(Math.abs(shift - (right ? 84.5 : -84.5)) < 1e-9)
+    assert.ok(Math.abs(shift - (right ? 1 : -1) * 169 * (riverScale(at(7)) - 1)) < 1e-9)
     assert.ok(!/NaN|Infinity/.test(bankPath(y, right, 12, at(365), 250)))
   }
 })
@@ -39,7 +44,7 @@ test('wider physical river permits lateral travel and the camera follows instead
 })
 
 test('traffic keeps the same neighbourhood size and target at seven and twenty-one days', () => {
-  for (const day of [0, 7, 21]) {
+  for (const day of [0, 7, 21, 84, 182]) {
     const minutes = RIVER_START_MINUTE + day * 1440
     assert.equal(coupleTarget(minutes), 7)
     for (const cameraX of [-220, 0, 220]) {

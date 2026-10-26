@@ -5,6 +5,9 @@ import { createRyoMood, openingRyoAction, tickRyoMood, type RyoMood } from './ry
 import { createCalendarDialogue, tickCalendarDialogue, type CalendarDialogue } from './calendar-dialogue.ts'
 import { COUPLE_COUNT, CONTACT_DISTANCE, createCouple, createCoupleMotion, moveCouple, departCouple, hullContact, coupleVisible, coupleTarget, riverCenter, type CoupleBoat } from './couples.ts'
 import { COUPLE_LINES, coupleLineSeconds, pickCoupleChat, type CoupleChat } from './couple-dialogue.ts'
+import { createProgression, unlockDueSkills, tickProgression, type ProgressionState } from './progression/state.ts'
+import { createSkillRuntime, strokeTechnique, recordForwardStroke, breakCooperation, skillSpeedLimit, skillSpinDrag, tickSkillRuntime, type SkillRuntime } from './progression/skills.ts'
+import { forwardTechnique, movementProfile, tickEvolution, craftScale } from './progression/evolution.ts'
 export { COUPLE_COUNT, createCoupleMotion, moveCouple, coupleVisible, riverCenter } from './couples.ts'
 export type { CoupleBoat, CoupleMotion } from './couples.ts'
 
@@ -44,6 +47,7 @@ export interface RowingState {
   opening: 'ryo' | 'shiro' | 'boarding' | 'guide' | 'guide-gap' | 'guide-start' | null
   openingAge: number
   elapsed: number
+  activeSeconds: number
   minutes: number
   x: number
   y: number
@@ -61,6 +65,8 @@ export interface RowingState {
   shiroUntil: number
   ryoUntil: number
   ryoMood: RyoMood
+  progression: ProgressionState
+  skills: SkillRuntime
   laughUntil: number
   shiroStrokes: number
   ryoStrokes: number
@@ -88,10 +94,11 @@ export interface RowingState {
 export function createRowing(random: () => number = Math.random, withOpening = false): RowingState {
   return {
     opening: withOpening ? 'ryo' : null, openingAge: 0,
-    elapsed: 0, minutes: START_MINUTE, x: 195, y: withOpening ? 480 : 370, heading: Math.PI, spin: 0, speed: 0,
+    elapsed: 0, activeSeconds: 0, minutes: START_MINUTE, x: 195, y: withOpening ? 480 : 370, heading: Math.PI, spin: 0, speed: 0,
     effort: false, eveningSeen: false, dialogue: null, dialogueAge: 0,
     lastShiro: -100, lastRyo: -100, shiroAction: 'rest', ryoAction: 'rest',
     shiroUntil: 0, ryoUntil: 0, ryoMood: createRyoMood(), laughUntil: 0, shiroStrokes: 0, ryoStrokes: 0,
+    progression: createProgression(), skills: createSkillRuntime(),
     taps: 0, distance: 0, turnTravel: 0, trail: [], trailTimer: 0,
     cameraX: 0, cameraY: 0, couples: [-740, -480, -240, 240, 480, 720, 960].map((offset, id) => createCouple(id, (withOpening ? 480 : 370) + offset, random)),
     nextCoupleId: COUPLE_COUNT, encounter: null, chiefVisit: null, firstChiefSeen: false, daily: createDailyDialogue(), collisionCooldown: 0, collisions: 0,
@@ -129,7 +136,7 @@ function updateTraffic(state: RowingState, random: () => number) {
 }
 
 function tickCoupleChat(state: RowingState, dt: number, random: () => number) {
-  const busy = state.calendar.chat || state.dialogue !== null || state.encounter || state.daily.chat || state.ryoMood.speech || (state.chiefVisit && !state.chiefVisit.done)
+  const busy = state.progression.presentation || state.calendar.chat || state.dialogue !== null || state.encounter || state.daily.chat || state.ryoMood.speech || (state.chiefVisit && !state.chiefVisit.done)
   const chat = state.coupleChat, boat = state.couples.find(b => b.id === chat?.boatId)
   if (chat && (busy || !boat || !coupleVisible(boat, state.cameraY, state.cameraX))) {
     state.coupleChat = null; state.coupleChatNextAt = state.elapsed + 5
@@ -140,7 +147,7 @@ function tickCoupleChat(state: RowingState, dt: number, random: () => number) {
       if (chat.line >= chat.lines.length) { state.coupleChat = null; state.coupleChatNextAt = state.elapsed + 10 + random() * 8 }
     }
   }
-  if (busy || state.coupleChat || state.ryoMood.pending.length || state.elapsed < state.coupleChatNextAt) return
+  if (busy || state.progression.pending.length || state.coupleChat || state.ryoMood.pending.length || state.elapsed < state.coupleChatNextAt) return
   const candidates = state.couples.filter(b => !b.chiefSurname && coupleVisible(b, state.cameraY, state.cameraX) && b.y > state.cameraY + 100 && b.y < state.cameraY + 600
     && state.elapsed >= (b.nextChatAt ?? 0) && (!b.departing || (b.departureReason !== 'closing' && !b.departureRemark)))
   const speaker = candidates.find(b => b.departing) ?? candidates[Math.min(candidates.length - 1, Math.floor(random() * candidates.length))]
@@ -170,10 +177,16 @@ export function clockDisplayAt(minutes: number) {
   return { date: iso.slice(0, 10).replaceAll('-', '/'), time: `${String(hour).padStart(2, '0')}:${minute}`, dateTime: iso }
 }
 
-function impulse(state: RowingState, who: Rower, reverse = false, strength = 1) {
+function impulse(state: RowingState, who: Rower, reverse = false, strength = 1, commanded = true, tailDraw = 1) {
   const direction = reverse ? -1 : 1
-  state.spin = Math.max(-2.5, Math.min(2.5, state.spin + (who === 'shiro' ? .72 : -.72) * direction * strength))
-  state.speed = Math.max(-22, Math.min(54, state.speed + 18 * direction * strength))
+  const technique = strokeTechnique(state.progression.level, who, reverse)
+  state.spin = Math.max(-2.5, Math.min(2.5, state.spin + (who === 'shiro' ? .72 : -.72) * direction * strength * technique.turn))
+  state.speed = Math.max(-22, Math.min(skillSpeedLimit(state.progression.level), state.speed + 18 * direction * strength * technique.thrust))
+  if (commanded && !reverse) {
+    forwardTechnique(state.skills.evolution, state, state.progression.level, who, state.elapsed, state.couples, tailDraw)
+    const danger = state.couples.some(b => Math.hypot(b.x - state.x, b.y - state.y) < 210)
+    recordForwardStroke(state.skills, state, state.progression.level, who, state.elapsed, danger)
+  }
   if (who === 'shiro') {
     state.shiroAction = 'stroke'; state.shiroUntil = state.elapsed + .7; state.shiroStrokes++
   } else {
@@ -181,7 +194,7 @@ function impulse(state: RowingState, who: Rower, reverse = false, strength = 1) 
   }
 }
 
-/** First evening ramps 0–50%; subsequent daylight is 30% and nights are 50%. */
+/** First evening ramps 25–50%; subsequent daylight is 30% and nights are 50%. */
 export function ryoForwardChance(minutes: number) {
   if (minutes < EVENING_MINUTE) return .25 + .25 * Math.max(0, (minutes - START_MINUTE) / (EVENING_MINUTE - START_MINUTE))
   const hour = ((minutes / 60) % 24 + 24) % 24
@@ -203,7 +216,7 @@ export function chooseRyoAction(minutes: number, effort: boolean, draw: number):
 
 /** Admit one complete exchange; ambient collision speech cannot interrupt a conversation. */
 function canStartBoatSpeech(state: RowingState) {
-  return !state.opening && !state.calendar.chat && state.dialogue === null && !state.encounter && !state.ryoMood.speech
+  return !state.opening && !state.progression.presentation && !state.calendar.chat && state.dialogue === null && !state.encounter && !state.ryoMood.speech
     && (!state.daily.chat || state.daily.chat.kind === 'random')
     && (!state.chiefVisit || state.chiefVisit.done)
 }
@@ -224,9 +237,10 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
     ? openingRyoAction(state.ryoMood, state.elapsed, random, ryoForwardChance(state.minutes))
     : chooseRyoAction(state.minutes, state.effort, random())
   if (action === 'stroke' || action === 'strong') {
-    impulse(state, who, false, action === 'strong' ? 1.45 : 1)
+    impulse(state, who, false, action === 'strong' ? 1.45 : 1, true, state.progression.level >= 10 ? random() : 1)
     return state.ryoAction
   }
+  breakCooperation(state.skills)
   if (action === 'reverse') {
     impulse(state, who, true)
     if (!state.ryoMood.reverseSpoken) {
@@ -247,7 +261,7 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
     return 'refuse'
   }
   state.ryoAction = 'push'; state.ryoUntil = state.elapsed + .8
-  impulse(state, 'shiro')
+  impulse(state, 'shiro', false, 1, false)
   if (periodAt(state.minutes) === 'morning') state.laughUntil = state.elapsed + 1.8
   return 'push'
 }
@@ -256,6 +270,7 @@ export function row(state: RowingState, who: Rower, random: () => number = Math.
 export function tickRowing(state: RowingState, dt: number, random: () => number = Math.random) {
   if (!Number.isFinite(dt) || dt <= 0) return
   dt = Math.min(dt, .1)
+  state.activeSeconds += dt
   if (state.opening) {
     state.openingAge += dt
     const duration = { ryo: 3.2, shiro: 1.8, boarding: 1.2, guide: 2, 'guide-gap': .3, 'guide-start': 1.8 }[state.opening]
@@ -278,19 +293,23 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   }
   const previousMinutes = state.minutes
   state.minutes += dt * MINUTES_PER_SECOND
+  unlockDueSkills(state.progression, state.minutes)
   if (!state.eveningSeen && state.minutes >= EVENING_MINUTE) {
     state.eveningSeen = true; state.dialogue = 0; state.dialogueAge = 0; state.laughUntil = 0; state.encounter = null
   }
-  state.spin *= Math.exp(-.2 * dt)
-  state.speed *= Math.exp(-.65 * dt)
+  tickEvolution(state.skills.evolution, state.progression.level, state.elapsed, dt, state)
+  const profile = movementProfile(state.progression.level, state.skills.evolution, state.elapsed)
+  state.spin *= Math.exp(-(skillSpinDrag(state.progression.level, state.elapsed >= Math.max(state.shiroUntil, state.ryoUntil), state.elapsed < state.skills.dashUntil) + (state.elapsed < state.skills.evolution.starUntil ? .45 : 0)) * dt)
+  state.speed *= Math.exp(-profile.drag * dt)
   state.heading += state.spin * dt
   state.turnTravel += Math.abs(state.spin * dt)
   // A tight turn spends force on circling, not forward travel.
-  const travel = state.speed * dt / (1 + Math.abs(state.spin) * 2.4)
+  const travel = state.speed * dt / (1 + Math.abs(state.spin) * profile.turnLoss)
   const previousX = state.x, previousY = state.y
   const previousCameraX = state.cameraX, previousCameraY = state.cameraY
   state.x += Math.sin(state.heading) * travel
   state.y += -Math.cos(state.heading) * travel + 6 * dt
+  // Paddle-driven travel only: no passive current, camera movement, turn angle or bank correction.
   state.distance += Math.abs(travel)
   // The river is unbounded longitudinally; a following camera replaces the old invisible end wall.
   const center = riverCenter(state.y)
@@ -299,7 +318,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   state.cameraY += (state.y - 370 - state.cameraY) * (1 - Math.exp(-3 * dt))
   const horizontalTarget = state.x - 195 - Math.max(-55, Math.min(55, state.x - 195))
   state.cameraX += (horizontalTarget - state.cameraX) * (1 - Math.exp(-3 * dt))
-  const movingPlayer = { x: state.x, y: state.y, heading: state.heading, velocityX: (state.x - previousX) / dt, velocityY: (state.y - previousY) / dt }
+  const movingPlayer = { x: state.x, y: state.y, heading: state.heading, scale: craftScale(state.skills.evolution), velocityX: (state.x - previousX) / dt, velocityY: (state.y - previousY) / dt }
   state.collisionCooldown = Math.max(0, state.collisionCooldown - dt)
   if (state.encounter) {
     state.encounter.age += dt
@@ -307,7 +326,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   }
   updateTraffic(state, random)
   tickCalendarDialogue(state.calendar, previousMinutes, state.minutes, dt,
-    state.dialogue !== null || Boolean(state.encounter) || Boolean(state.daily.chat) || Boolean(state.chiefVisit && !state.chiefVisit.done))
+    Boolean(state.progression.presentation) || state.dialogue !== null || Boolean(state.encounter) || Boolean(state.daily.chat) || Boolean(state.chiefVisit && !state.chiefVisit.done))
   if (state.calendar.chat) state.laughUntil = 0
   for (const boat of state.couples) {
     const talking = state.chiefVisit?.boatId === boat.id && !state.chiefVisit.done
@@ -333,8 +352,8 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
         if (random() < .1) boat.chiefSurname = CHIEF_SURNAMES[Math.max(0, Math.min(CHIEF_SURNAMES.length - 1, Math.floor(random() * CHIEF_SURNAMES.length)))]
       }
     }
-    const hit = hullContact(state, boat)
-    if (hit.distance < CONTACT_DISTANCE) {
+    const hit = hullContact(movingPlayer, boat)
+    if (!profile.airborne && hit.distance < CONTACT_DISTANCE) {
       const nx = hit.distance > .01 ? hit.dx / hit.distance : 1
       const ny = hit.distance > .01 ? hit.dy / hit.distance : 0
       const overlap = CONTACT_DISTANCE - hit.distance
@@ -359,7 +378,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   const speakingBoat = state.couples.find(candidate => candidate.id === state.encounter?.boatId)
   if (!speakingBoat || !coupleVisible(speakingBoat, state.cameraY, state.cameraX)) state.encounter = null
   tickDailyDialogue(state.daily, previousMinutes, state.minutes, dt,
-    Boolean(state.calendar.chat) || state.dialogue !== null || Boolean(state.encounter) || Boolean(state.ryoMood.speech) || Boolean(state.chiefVisit && !state.chiefVisit.done), random)
+    Boolean(state.progression.presentation) || Boolean(state.calendar.chat) || state.dialogue !== null || Boolean(state.encounter) || Boolean(state.ryoMood.speech) || Boolean(state.chiefVisit && !state.chiefVisit.done), random)
   if (state.daily.chat) state.laughUntil = 0
   const visit = state.chiefVisit
   if (visit) {
@@ -382,7 +401,7 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   const firstNight = state.minutes < 1440
   // The first encounter waits until around 22:00, after the existing go-home exchange.
   const chiefWindow = firstNight ? state.minutes >= EVENING_MINUTE && state.minutes < 23.5 * 60 : chiefHours(state.minutes)
-  if (!state.calendar.chat && !state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && !state.ryoMood.speech && chiefWindow) {
+  if (!state.progression.presentation && !state.progression.pending.length && !state.calendar.chat && !state.chiefVisit && state.dialogue === null && !state.encounter && !state.daily.chat && !state.ryoMood.speech && chiefWindow) {
     const boat = state.couples.filter(candidate => !candidate.departing && candidate.x >= state.cameraX + 30 && candidate.x <= state.cameraX + 360 && candidate.y >= state.cameraY + 100 && candidate.y <= state.cameraY + 600
       && (firstNight ? !state.firstChiefSeen : candidate.chiefSurname && !candidate.chiefGreeted))
       .sort((a, b) => Math.abs(a.y - state.y) - Math.abs(b.y - state.y))[0]
@@ -399,8 +418,10 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
   }
   tickCoupleChat(state, dt, random)
   tickRyoMood(state.ryoMood, dt, state.elapsed, state.ryoUntil,
-    Boolean(state.calendar.chat || state.encounter || state.daily.chat || state.coupleChat || (state.chiefVisit && !state.chiefVisit.done)) || state.dialogue !== null,
+    Boolean(state.progression.presentation || state.calendar.chat || state.encounter || state.daily.chat || state.coupleChat || (state.chiefVisit && !state.chiefVisit.done)) || state.dialogue !== null,
     state.effort || state.minutes >= EVENING_MINUTE)
+  tickProgression(state.progression, dt, progressionBlocked(state))
+  tickSkillRuntime(state.skills, dt, state.elapsed, state)
   for (const point of state.trail) point.age += dt
   state.trail = state.trail.filter(point => point.age < 3)
   state.trailTimer += dt
@@ -408,4 +429,11 @@ export function tickRowing(state: RowingState, dt: number, random: () => number 
     state.trailTimer = 0
     state.trail.push({ x: state.x - Math.sin(state.heading) * 72, y: state.y + Math.cos(state.heading) * 72, age: 0 })
   }
+}
+
+/** Shared by presentation and scheduling so an interrupted reveal is hidden as well as frozen. */
+export function progressionBlocked(state: RowingState) {
+  return Boolean(state.opening || state.calendar.chat || state.calendar.celebration || state.daily.chat || state.encounter
+    || state.coupleChat || state.ryoMood.speech || (state.chiefVisit && !state.chiefVisit.done)
+    || state.dialogue !== null || state.laughUntil > state.elapsed)
 }

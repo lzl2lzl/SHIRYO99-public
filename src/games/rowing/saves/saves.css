@@ -1,0 +1,34 @@
+.rowing-header-left { display: flex; gap: 12px; align-items: flex-start; }
+.rowing-save-button { min-height: 44px; padding: 0 6px; border: 0; background: none; font-size: 13px !important; }
+.rowing-save-warning { position: absolute; z-index: 5; top: 70px; left: 24px; right: 150px; margin: 0; font-size: 12px; pointer-events: none; }
+.rowing-save-overlay { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)); background: #18243470; }
+.rowing-save-panel { width: 100%; max-width: 460px; max-height: 100%; overflow: auto; overscroll-behavior: contain; padding: 24px; background: #f4f2f7; color: #51465f; border-radius: 16px; scrollbar-width: thin; }
+.rowing-save-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.rowing-save-heading h2 { margin: 0; font-size: 24px; font-weight: 600; }
+.rowing-save-heading button { width: 44px; height: 44px; padding: 0; font-size: 28px !important; border: 0; background: none; }
+.rowing-save-summary p { margin: 4px 0; font-size: 14px; line-height: 1.6; }
+.rowing-save-summary p:first-child { font-variant-numeric: tabular-nums; }
+.rowing-save-summary span { margin-left: 8px; }
+.rowing-save-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.rowing-save-actions button { min-height: 44px; padding: 10px 16px; border: 1px solid #bcb0cc; border-radius: 8px; background: transparent; font-size: 16px; }
+.rowing-save-actions .rowing-save-primary { background: #7336cb; border-color: #7336cb; color: #fff; }
+.rowing-save-panel button:disabled { cursor: default; opacity: .45; }
+.rowing-save-slots { border-top: 1px solid #d9d1e2; margin-top: 20px; }
+.rowing-save-slot { padding: 14px 0 8px; border-bottom: 1px solid #d9d1e2; }
+.rowing-save-slot-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rowing-save-slot-heading h3 { font-size: 16px; font-weight: 500; margin: 0 0 5px; }
+.rowing-save-slot-heading span { font-size: 12px; color: #746780; }
+.rowing-save-slot .rowing-save-summary p:last-child { display: none; }
+.rowing-save-slot-actions, .rowing-save-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.rowing-save-slot-actions button, .rowing-save-tools button, .rowing-save-exit { border: 0; padding: 8px 10px; min-height: 44px; background: transparent; color: #6731ae !important; font-size: 14px !important; }
+.rowing-save-slot-actions { justify-content: flex-end; }
+.rowing-save-tools { margin: 12px -10px 0; }
+.rowing-save-confirm > p { font-size: 16px; line-height: 1.7; }
+.rowing-save-target { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 16px; }
+.rowing-save-target select { min-height: 44px; padding: 8px; max-width: 100%; font: inherit; border: 1px solid #bcb0cc; border-radius: 6px; background: #fcfbfd; color: #51465f; }
+.rowing-save-target span { font-size: 14px; line-height: 1.6; }
+.rowing-save-note, .rowing-save-status, .rowing-save-error { font-size: 13px; line-height: 1.7; margin: 10px 0 0; overflow-wrap: anywhere; }
+.rowing-save-note { color: #746780; }
+.rowing-save-error { color: #94424e; }
+.rowing-save-exit { margin: 12px 0 0 -10px; }
+@media(max-width:360px) { .rowing-save-panel { padding: 18px; } .rowing-header-left { gap: 4px; } }

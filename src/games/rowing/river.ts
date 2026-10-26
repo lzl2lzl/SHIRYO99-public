@@ -1,10 +1,22 @@
+import { SPACE_MILESTONES, upgradeAt } from './progression/catalog.ts'
 export const RIVER_START_MINUTE = 18 * 60
 export const INITIAL_HALF_WIDTH = 169
 
-/** Seven elapsed days reach 1.5×; later weeks grow continuously, at a gentler rate. */
+/** Meet each manoeuvre's space requirement by its upgrade morning, without widening jumps. */
 export function riverScale(minutes: number) {
-  const days = Math.max(0, (minutes - RIVER_START_MINUTE) / 1440)
-  return 1 + .5 * Math.log2(1 + days / 7)
+  if (!Number.isFinite(minutes) || minutes <= RIVER_START_MINUTE) return 1
+  for (let i = 1; i < SPACE_MILESTONES.length; i++) {
+    const a = SPACE_MILESTONES[i - 1], b = SPACE_MILESTONES[i]
+    const start = a.week ? upgradeAt(a.week) : RIVER_START_MINUTE, end = upgradeAt(b.week)
+    if (minutes <= end) {
+      const t = Math.max(0, Math.min(1, (minutes - start) / (end - start)))
+      const smooth = t * t * (3 - 2 * t)
+      return a.scale + (b.scale - a.scale) * smooth
+    }
+  }
+  const last = SPACE_MILESTONES[SPACE_MILESTONES.length - 1]
+  const weeks = (minutes - upgradeAt(last.week)) / (7 * 1440)
+  return last.scale + .5 * Math.log2(1 + weeks * weeks)
 }
 
 export function riverHalfWidth(minutes: number) { return INITIAL_HALF_WIDTH * riverScale(minutes) }

@@ -1,25 +1,37 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type KeyboardEvent } from 'react'
 import type { GameDefinition, GameScreenProps } from '../../engine/types'
-import { chiefLines, clockDisplayAt, createRowing, EVENING_LINES, complaintSeconds, periodAt, row, tickRowing, type Rower } from './model'
+import { chiefLines, clockDisplayAt, createRowing, EVENING_LINES, complaintSeconds, periodAt, row, tickRowing, progressionBlocked, type Rower } from './model'
 import { bankPath, bankX, riverDetails } from './scenery'
 import { placeResponse, rowingBounds, coupleTextBounds } from './bubble-layout'
 import { BirthdayMoment } from './BirthdayMoment'
 import { CALENDAR_EPOCH } from './calendar'
 import { RYO_MOOD_LINES } from './ryo-mood'
+import { IMPLEMENTED_WEEK, upgradeAt, UPGRADE_CLOCK, WEEK_MINUTES } from './progression/catalog'
+import { createProgression, upgradeDialogue } from './progression/state'
+import { bowLift } from './progression/skills'
+import { LevelUpMoment } from './progression/LevelUpMoment'
+import { SkillTree, SkillTreeIcon } from './progression/SkillTree'
+import { FLY_UNTIL } from './progression/presentation'
+import { SkillWake } from './progression/SkillWake'
+import { EvolutionScene, EvolutionHull } from './progression/EvolutionScene'
+import { craftScale, realmAltitude } from './progression/evolution'
+import { useRowingSaves } from './saves/useRowingSaves'
+import { SaveMenu } from './saves/SaveMenu'
 import './rowing.css'
 
 
 const ASSETS = `${import.meta.env.BASE_URL}assets/characters/`
 
 const MOSAIC_COLORS = ['#a68bc6', '#b4a1c9', '#8f7aa9', '#c1b1d1', '#786783', '#ddd0cd', '#b3a8bd', '#9b8ba9']
-function BoatHull() {
+function BoatHull({ evolved = false, lift = 0 }: { evolved?: boolean; lift?: number } = {}) {
   return <>
     <ellipse cy="10" rx="71" ry="109" fill="#143e4d" opacity=".12"/>
-    <path d="M0 -111C73 -77 80 17 56 83Q0 112 -56 83C-80 17 -73 -77 0 -111" fill="#9c7961"/>
+    <path d={`M0 ${-111 - lift * 6}C73 -77 80 17 56 83Q0 112 -56 83C-80 17 -73 -77 0 ${-111 - lift * 6}`} fill="#9c7961"/>
     <path d="M0 -103C64 -72 70 14 49 77Q0 99 -49 77C-70 14 -64 -72 0 -103" fill="#dfc6a0"/>
     <path d="M0 -87C51 -58 59 10 41 64Q0 84 -41 64C-59 10 -51 -58 0 -87" fill="#ae8f73"/>
     <path d="M0 -72V70M-27 -42V63M27 -42V63" stroke="#c8ab88" strokeWidth="2"/>
     <path d="M-55 -13H55M-51 46H51" stroke="#e6cfa9" strokeWidth="12"/>
+    {evolved && <g fill="none" strokeWidth="3" strokeLinecap="round"><path d="M-5 -95Q-63 -49 -53 33" stroke="#d5d1d8"/><path d="M5 -95Q63 -49 53 33" stroke="#a68bc6"/></g>}
   </>
 }
 function Portrait({ who, active, masked = false }: { who: Rower; active: boolean; masked?: boolean }) {
@@ -40,15 +52,29 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const [initialGame] = useState(() => {
     // Local review links exercise the real midnight event; production always starts normally.
     const birthday = import.meta.env.DEV ? new URLSearchParams(location.search).get('birthday') : null
-    const preview = birthday === 'shiro' || birthday === 'ryo'
-    const state = createRowing(Math.random, !preview)
-    if (preview) {
+    const upgrade = import.meta.env.DEV ? Number(new URLSearchParams(location.search).get('upgrade')) : 0
+    const upgradePreview = Number.isInteger(upgrade) && upgrade >= 1 && upgrade <= IMPLEMENTED_WEEK
+    const birthdayPreview = birthday === 'shiro' || birthday === 'ryo'
+    const state = createRowing(Math.random, !birthdayPreview && !upgradePreview)
+    if (birthdayPreview) {
       const year = new Date(CALENDAR_EPOCH).getUTCFullYear()
       const midnight = birthday === 'shiro' ? Date.UTC(year, 7, 24) : Date.UTC(year, 8, 9)
       state.minutes = (midnight - CALENDAR_EPOCH - 1000) / 60000
       state.eveningSeen = true
       state.effort = true
       state.couples = []
+      // Review this birthday, without replaying all earlier upgrade presentations.
+      state.progression = createProgression(Math.max(0, Math.floor((state.minutes - UPGRADE_CLOCK) / WEEK_MINUTES)))
+    } else if (upgradePreview) {
+      state.minutes = upgradeAt(upgrade) - .15
+      state.progression = createProgression(upgrade - 1)
+      state.eveningSeen = true; state.effort = true; state.couples = []
+    }
+    if (birthdayPreview || upgradePreview) {
+      const level = state.progression.level, evolution = state.skills.evolution
+      evolution.realmMix = level >= 20 ? 2 : level >= 16 ? 1 : 0
+      evolution.altitude = realmAltitude(evolution.realmMix)
+      evolution.form = Math.max(0,level-23)
     }
     return state
   })
@@ -62,7 +88,20 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const responseElement = useRef<HTMLDivElement>(null)
   const [measuredResponse, setMeasuredResponse] = useState({ text: '', width: 0, height: 0 })
   const held = useRef(new Map<string, Rower>())
+  const [treeOpen, setTreeOpen] = useState(false)
+  const treePaused = useRef(false), treeEntry = useRef<HTMLButtonElement>(null)
+  const [treeTarget, setTreeTarget] = useState({ x: 300, y: 804 })
+  const showTree = (open: boolean) => { held.current.clear(); treePaused.current = open; setTreeOpen(open) }
+  const previewQuery = import.meta.env.DEV ? new URLSearchParams(location.search) : null
+  const previewWeek = Number(previewQuery?.get('upgrade'))
+  const preview = ['shiro','ryo'].includes(previewQuery?.get('birthday') ?? '') || (Number.isInteger(previewWeek) && previewWeek >= 1 && previewWeek <= IMPLEMENTED_WEEK)
+  const saves = useRowingSaves({ preview, onExit,
+    snapshot: () => ({ state: game.current, dockOrigin: dockOrigin.current }),
+    release: () => held.current.clear(),
+    replace: save => { held.current.clear(); game.current=save.state; dockOrigin.current=save.dockOrigin; repaint(n=>n+1) },
+  })
   const state = game.current
+  const skillLevel = state.progression.level, evolution = state.skills.evolution
   const period = periodAt(state.minutes)
   const clock = clockDisplayAt(state.minutes)
   const dialogue = state.dialogue === null ? null : EVENING_LINES[state.dialogue]
@@ -70,6 +109,18 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const announcement = state.opening === 'guide' ? '点击人物' : state.opening === 'guide-start' ? '开始划船' : null
   const announcementDuration = state.opening === 'guide' ? 2 : 1.8
   const announcementOpacity = reduced ? 1 : Math.max(0, Math.min(1, state.openingAge / .25, (announcementDuration - state.openingAge) / .35))
+
+  useLayoutEffect(() => {
+    const root = scene.current, icon = treeEntry.current?.querySelector('svg')
+    if (!root || !icon) return
+    const measure = () => {
+      const a = root.getBoundingClientRect(), b = icon.getBoundingClientRect()
+      setTreeTarget({ x: b.left - a.left + b.width / 2, y: b.top - a.top + b.height / 2 })
+    }
+    measure()
+    const observer = new ResizeObserver(measure); observer.observe(root); observer.observe(icon)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }))
@@ -90,11 +141,12 @@ export function RowingGame({ onExit }: GameScreenProps) {
   useEffect(() => {
     let frame = 0, previous = 0
     const loop = (now: number) => {
-      const blocked = document.hidden || Boolean(scene.current?.closest('[inert]'))
+      const blocked = saves.paused.current || treePaused.current || document.hidden || Boolean(scene.current?.closest('[inert]'))
       if (blocked) held.current.clear()
       if (!blocked && previous) {
         tickRowing(game.current, (now - previous) / 1000)
         for (const who of new Set(held.current.values())) row(game.current, who)
+        saves.frame()
         repaint(n => n + 1)
       }
       previous = blocked ? 0 : now
@@ -103,7 +155,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     const release = () => { held.current.clear(); repaint(n => n + 1) }
     const visibility = () => { previous = 0; release(); setHidden(document.hidden) }
     const keyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.altKey || event.ctrlKey || event.metaKey || event.repeat || document.hidden || scene.current?.closest('[inert]')) return
+      if (event.altKey || event.ctrlKey || event.metaKey || event.repeat || saves.paused.current || treePaused.current || document.hidden || scene.current?.closest('[inert]')) return
       const who = event.code === 'KeyA' ? 'shiro' : event.code === 'KeyL' ? 'ryo' : null
       if (!who || game.current.opening) return
       event.preventDefault(); held.current.set(`key:${event.code}`, who); row(game.current, who)
@@ -122,12 +174,13 @@ export function RowingGame({ onExit }: GameScreenProps) {
   }, [])
 
   const paddle = (who: Rower) => {
+    if (saves.paused.current || treePaused.current) return
     row(game.current, who)
     repaint(n => n + 1)
   }
   const inputs = (who: Rower) => ({
     onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0 || game.current.opening) return
+      if (event.button !== 0 || game.current.opening || saves.paused.current || treePaused.current) return
       event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
       held.current.set(`pointer:${event.pointerId}`, who); paddle(who)
     },
@@ -148,12 +201,14 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const theta = reduced ? Math.round(heading / 30) * 30 : heading
   const radians = theta * Math.PI / 180
   const boatScale = Math.max(180, Math.min(230, size.width * .48)) / 220
+  const elevation = Math.max(0, evolution.altitude - realmAltitude(evolution.realmMix)) * boatScale
+  const hullScale = craftScale(evolution)
   const seats = (['shiro', 'ryo'] as const).map(who => {
     const x = who === 'shiro' ? -35 : 35
     const depth = Math.sin(radians) * x + Math.cos(radians) * 20
     return { who, depth,
       x: (state.x - state.cameraX) / 390 * size.width + (Math.cos(radians) * x - Math.sin(radians) * 20) * boatScale,
-      y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) + depth * boatScale,
+      y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) + depth * boatScale - elevation,
     }
   })
   const boardingProgress = state.opening === 'boarding' ? reduced ? 1 : Math.min(1, state.openingAge / 1.2) : 0
@@ -181,11 +236,12 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const calendarChat = state.calendar.chat, calendarLine = calendarChat?.lines[calendarChat.line]
   const coupleChat = state.coupleChat, coupleLine = coupleChat?.lines[coupleChat.line]
   const moodLine = state.ryoMood.speech ? RYO_MOOD_LINES[state.ryoMood.speech] : null
+  const upgradeLine = upgradeDialogue(state.progression)
   const complaining = Boolean(encounter && encounter.age < complaintSeconds(encounter))
   const couple = state.couples.find(boat => boat.id === (encounter?.boatId ?? (chiefLine ? visit?.boatId : coupleChat?.boatId)))
-  const response = calendarLine?.text ?? (encounter ? complaining ? encounter.complaint : encounter.apology : dailyLine?.text ?? chiefLine?.text ?? moodLine ?? coupleLine ?? '')
-  const responseWho = calendarLine?.who ?? (encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who ?? (moodLine ? 'ryo' : coupleLine ? 'couple' : undefined))
-  const responseSpeaker = calendarLine ? calendarLine.who==='ryo'?'月云了':'宇都木士郎' : encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? (moodLine ? '月云了' : coupleLine ? '周围的情侣' : '')
+  const response = calendarLine?.text ?? (encounter ? complaining ? encounter.complaint : encounter.apology : dailyLine?.text ?? chiefLine?.text ?? moodLine ?? upgradeLine?.text ?? coupleLine ?? '')
+  const responseWho = calendarLine?.who ?? (encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who ?? (moodLine ? 'ryo' : upgradeLine?.who ?? (coupleLine ? 'couple' : undefined)))
+  const responseSpeaker = calendarLine ? calendarLine.who==='ryo'?'月云了':'宇都木士郎' : encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? (moodLine ? '月云了' : upgradeLine ? upgradeLine.who === 'ryo' ? '月云了' : '宇都木士郎' : coupleLine ? '周围的情侣' : '')
   const responseSeat = seats[responseWho === 'ryo' ? 1 : 0]
   const speakingCouple = responseWho === 'couple' ? couple : undefined
   const plainCouple = Boolean(speakingCouple && !chiefLine && !(encounter && speakingCouple.chiefSurname))
@@ -196,7 +252,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     : Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44, responseSpeaker.length * 12 + 44))
   const responseHeight = measuredResponse.text === response && measuredResponse.width === responseWidth ? measuredResponse.height
     : plainCouple ? Math.ceil(response.length * 14 / responseWidth) * 22 : 62 + Math.ceil(response.length * 16 / (responseWidth - 40)) * 26
-  const protectedBoat = rowingBounds({ x: (state.x - state.cameraX) / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) }, radians, boatScale, seats)
+  const protectedBoat = rowingBounds({ x: (state.x - state.cameraX) / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) - elevation }, radians, boatScale * hullScale, seats)
   const speakerBounds = speakingCouple && coupleCenter ? plainCouple
     ? coupleTextBounds(coupleCenter, speakingCouple.heading, boatScale)
     : rowingBounds(coupleCenter, speakingCouple.heading, boatScale, []) : undefined
@@ -214,18 +270,23 @@ export function RowingGame({ onExit }: GameScreenProps) {
   }, [response, responseWidth, plainCouple, Boolean(dialogue)])
 
   return <main ref={scene} className="rowing-screen" data-period={period} data-effort={state.effort} data-hidden={hidden} data-opening={state.opening ?? 'done'}
+    data-skill-level={state.progression.level} data-skill-pairs={state.skills.pairs} data-realm={evolution.realmMix > 1.2 ? 'galaxy' : evolution.realmMix > .15 ? 'clouds' : 'river'} data-altitude={evolution.altitude.toFixed(1)} data-form={evolution.form.toFixed(2)}
     data-spinning={Math.abs(state.spin) > 1.05} data-heading={state.heading.toFixed(2)} data-taps={state.taps}
     data-camera={state.cameraY.toFixed(1)} data-collisions={state.collisions} data-shiro-strokes={state.shiroStrokes} data-ryo-strokes={state.ryoStrokes}
     style={{ '--row-angle': `${theta}deg` } as CSSProperties}>
+    <div className="rowing-playfield" inert={saves.panel !== null || treeOpen}>
     <header className="rowing-header">
-      <button className="rowing-back" onClick={onExit} aria-label="返回游戏大厅">← 返回</button>
+      <div className="rowing-header-left"><button className="rowing-back" onClick={()=>void saves.exit()} aria-label="返回游戏大厅">← 返回</button>
+        {!preview&&<button className="rowing-save-button" onClick={saves.open} aria-label={saves.error?'存档，自动保存未完成':'打开存档菜单'}>存档{saves.error?' !':''}</button>}</div>
       <div className="rowing-clock" aria-label={`${clock.date} ${clock.time}`}>
         <span>{clock.date}</span>
         <time dateTime={clock.dateTime}>{clock.time}</time>
       </div>
     </header>
-    <div className="rowing-celestial" aria-hidden="true"><span /></div>
-    <svg className="rowing-water" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true">
+    {saves.error&&saves.started&&<p className="rowing-save-warning" role="status">自动存档未保存，请打开存档菜单。</p>}
+    <EvolutionScene evolution={evolution} cameraX={state.cameraX} cameraY={state.cameraY} elapsed={state.elapsed} night={period === 'night'} reduced={reduced}/>
+    <div className="rowing-celestial" aria-hidden="true" style={{opacity: .8 * (1 - Math.max(0,evolution.realmMix-1))}}><span /></div>
+    <svg className="rowing-water" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true" style={{opacity:1-Math.min(1,evolution.realmMix)}}>
       <defs><linearGradient id="rowing-water-light" x2=".9" y2="1"><stop stopColor="white" stopOpacity=".14"/><stop offset="1" stopColor="white" stopOpacity="0"/></linearGradient></defs>
       {[false, true].map(right => <g key={String(right)}>
         <path className="rowing-bank" d={bankPath(state.cameraY, right, 0, state.minutes, state.cameraX)} />
@@ -242,6 +303,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
     </svg>
     <div className="rowing-dock" aria-hidden="true" style={{ top: dockY, width: size.width / 2 + 35 * boatScale + 18 }}><i/><i/><i/></div>
     <svg className="rowing-stage" viewBox="0 0 390 700" preserveAspectRatio="none" aria-hidden="true">
+      <SkillWake runtime={state.skills} level={skillLevel} cameraX={state.cameraX} cameraY={state.cameraY} reduced={reduced}/>
       {state.trail.map((p, i) => <ellipse key={i} cx={p.x - state.cameraX} cy={p.y - state.cameraY} rx={5 + p.age * 6} ry={2 + p.age * 2} className="rowing-trail" opacity={Math.max(0, (1 - p.age / 3) * .18)} />)}
     </svg>
     <div className="rowing-boat-layer rowing-couples" aria-hidden="true">
@@ -249,7 +311,7 @@ export function RowingGame({ onExit }: GameScreenProps) {
         const angle = boat.heading * 180 / Math.PI, stroke = reduced || boat.stopped ? 0 : Math.sin(boat.strokePhase ?? 0) * 24
         return <div key={boat.id} className="rowing-boat rowing-couple" data-boat={boat.id} data-chief={boat.chiefSurname} data-style={boat.motion?.style} data-departing={boat.departing || false} data-stopped={boat.stopped || false}
           style={{ left: `${(boat.x - state.cameraX) / 390 * 100}%`, top: `${(boat.y - state.cameraY) / 700 * 100}%`, transform: `translate(-50%, -50%) rotate(${angle}deg)` }}>
-          <svg className="rowing-hull" viewBox="-110 -125 220 250"><BoatHull/>
+          <svg className="rowing-hull" viewBox="-110 -125 220 250"><EvolutionHull level={skillLevel >= 20 ? 20 : skillLevel >= 16 ? 16 : 0} evolution={evolution} elapsed={state.elapsed} reduced={reduced} back couple/><BoatHull/><EvolutionHull level={skillLevel >= 20 ? 20 : skillLevel >= 16 ? 16 : 0} evolution={evolution} elapsed={state.elapsed} reduced={reduced} couple/>
             <g className="rowing-oar rowing-oar-left" style={{ transform: `rotate(${stroke - 12}deg)` }}><path d="M-22 3L-91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M-77 20L-105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/></g>
             <g className="rowing-oar rowing-oar-right" style={{ transform: `rotate(${-stroke + 12}deg)` }}><path d="M22 3L91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M77 20L105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/></g>
             <g transform={`rotate(${-angle})`}>
@@ -259,15 +321,18 @@ export function RowingGame({ onExit }: GameScreenProps) {
         </div>
       })}
     </div>
+    {elevation > 1 && <div className="rowing-flight-shadow" aria-hidden="true" style={{left:`${(state.x-state.cameraX)/390*100}%`,top:50+(state.y-state.cameraY)/700*(size.height-50),opacity:Math.max(.04,.15-elevation*.001)}}/>}
     <div className="rowing-boat-layer">
-      <div className="rowing-boat" style={{ left: `${(state.x - state.cameraX) / 390 * 100}%`, top: `${(state.y - state.cameraY) / 700 * 100}%` }}>
-        <svg className="rowing-hull" viewBox="-110 -125 220 250" aria-hidden="true">
-          <BoatHull/>
+      <div className="rowing-boat rowing-player-boat" style={{ left: `${(state.x - state.cameraX) / 390 * 100}%`, top: `calc(${(state.y - state.cameraY) / 700 * 100}% - ${elevation}px)` }}>
+        <svg className="rowing-hull" viewBox="-110 -125 220 250" aria-hidden="true" style={{transform:`scale(${hullScale})`}}>
+          <EvolutionHull level={skillLevel} evolution={evolution} elapsed={state.elapsed} reduced={reduced} back/>
+          <BoatHull evolved={state.progression.level >= 4} lift={reduced ? 0 : bowLift(state.skills, state.progression.level, state.elapsed)}/>
+          <EvolutionHull level={skillLevel} evolution={evolution} elapsed={state.elapsed} reduced={reduced}/>
           <g className="rowing-oar rowing-oar-left" data-active={state.shiroAction === 'stroke'} style={{ transform: `rotate(${state.shiroAction === 'stroke' && !reduced ? Math.sin((.7 - (state.shiroUntil - state.elapsed)) / .7 * Math.PI * 2) * 32 : -12}deg)` }}>
-            <path d="M-22 3L-91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M-77 20L-105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/>
+            <path d="M-22 3L-91 26" stroke={skillLevel>=24?'#bdb6cd':'#5e544f'} strokeWidth={skillLevel>=24?6:4} strokeLinecap="round"/><path className={skillLevel>=26?'rowing-light-oars':undefined} d="M-77 20L-105 30" stroke={skillLevel>=26?'#f0e6ff':skillLevel>=24?'#d9d3e3':'#e8d4b3'} strokeWidth={skillLevel>=26?16:11} strokeLinecap="round"/>
           </g>
           <g className="rowing-oar rowing-oar-right" data-reverse={state.ryoAction === 'reverse'} style={{ transform: `rotate(${['stroke', 'strong', 'reverse', 'miss'].includes(state.ryoAction) && !reduced ? Math.sin((.7 - (state.ryoUntil - state.elapsed)) / .7 * Math.PI * 2) * (state.ryoAction === 'reverse' ? 32 : state.ryoAction === 'strong' ? -44 : -32) : 12}deg)` }}>
-            <path d="M22 3L91 26" stroke="#5e544f" strokeWidth="4" strokeLinecap="round"/><path d="M77 20L105 30" stroke="#e8d4b3" strokeWidth="11" strokeLinecap="round"/>
+            <path d="M22 3L91 26" stroke={skillLevel>=24?'#aa8fc9':'#5e544f'} strokeWidth={skillLevel>=24?6:4} strokeLinecap="round"/><path className={skillLevel>=26?'rowing-light-oars':undefined} d="M77 20L105 30" stroke={skillLevel>=26?'#cda6ff':skillLevel>=24?'#bba2d7':'#e8d4b3'} strokeWidth={skillLevel>=26?16:11} strokeLinecap="round"/>
           </g>
         </svg>
         {!onShore && seats.map(({ who, depth }) => <button key={who} className={`rowing-person rowing-person-${who}`} style={{ zIndex: Math.round(depth + 60) }}
@@ -290,6 +355,14 @@ export function RowingGame({ onExit }: GameScreenProps) {
       {!plainCouple && <span>{responseSpeaker}</span>}<p>{response}</p>
     </div> : null}
     {state.calendar.celebration && <BirthdayMoment celebration={state.calendar.celebration} reduced={reduced}/>}
+    {state.progression.presentation?.phase === 'reveal' && !progressionBlocked(state) && <LevelUpMoment moment={state.progression.presentation} reduced={reduced} origin={{ x: size.width / 2, y: size.height * .3 }} target={treeTarget}/>}
+    <button ref={treeEntry} className="rowing-tree-entry" onClick={() => showTree(true)} aria-label="打开技能树" aria-haspopup="dialog"
+      data-absorbing={state.progression.presentation?.phase === 'reveal' && !progressionBlocked(state) && state.progression.presentation.age >= FLY_UNTIL}>
+      <SkillTreeIcon/><span>技能树</span>
+    </button>
+    </div>
+    <SaveMenu saves={saves} state={state}/>
+    {treeOpen && <SkillTree level={state.progression.level} onClose={() => showTree(false)}/>}
   </main>
 }
 

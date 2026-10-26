@@ -1,0 +1,13 @@
+.rowing-evolution-sky { position: absolute; inset: 0; pointer-events: none; overflow: hidden; background: linear-gradient(165deg,#d5d9ed,#aab9dc 46%,#d8c8e4); }
+.rowing-evolution-sky[data-night="true"] { background: linear-gradient(165deg,#343653,#5e5d86 55%,#8e83a2); }
+.rowing-evolution-sky svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.rowing-cloud-fields { fill: #f6f4fa; }
+.rowing-galaxy-field { position: absolute; inset: 0; background: radial-gradient(ellipse at 85% 20%,#67478a55,transparent 55%),radial-gradient(ellipse at 15% 70%,#556ca94a,transparent 55%),linear-gradient(160deg,#19172e,#292844 50%,#392d51); }
+.rowing-galaxy-stars { fill: #ede5ff; }
+.rowing-screen[data-realm="galaxy"] { --row-ink: #e7e1f3; }
+.rowing-flight-shadow { position: absolute; pointer-events: none; width: 130px; height: 180px; border-radius: 50%; background: #223149; transform: translate(-50%,-50%) rotate(var(--row-angle)); }
+.rowing-screen[data-realm="galaxy"] .rowing-flight-shadow { background: #ac88d0; }
+.rowing-light-oars { filter: drop-shadow(0 0 4px #ceb0ff); }
+.rowing-evolution-burst { position: absolute; width: 100%; height: auto; fill: none; stroke: #d9c3ef; stroke-width: 2; }
+.rowing-level-up[data-major="true"] .rowing-level-slash { background: linear-gradient(105deg,#e4dfea 0%,#e4dfea 40%,#b294d9 40%,#c3a7ea 100%); }
+@media(prefers-reduced-motion:reduce) { .rowing-light-oars { filter: none; } }
