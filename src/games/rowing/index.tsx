@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import type { GameDefinition, GameScreenProps } from '../../engine/types'
 import { chiefLines, clockDisplayAt, createRowing, EVENING_LINES, complaintSeconds, periodAt, row, tickRowing, type Rower } from './model'
 import { bankPath, bankX, riverDetails } from './scenery'
-import { placeResponse, rowingBounds } from './bubble-layout'
+import { placeResponse, rowingBounds, coupleLeader } from './bubble-layout'
 import { BirthdayMoment } from './BirthdayMoment'
 import { CALENDAR_EPOCH } from './calendar'
 import { RYO_MOOD_LINES } from './ryo-mood'
@@ -24,7 +24,8 @@ function BoatHull() {
 }
 function Portrait({ who, active, masked = false }: { who: Rower; active: boolean; masked?: boolean }) {
   const source = who === 'shiro' ? `shiro/white-${active ? 'b' : 'a'}.png` : `ryo/${active ? 'fishing-no-grapes' : 'no-crown-a'}.png`
-  const frame = who === 'shiro' ? '390 88 560 810' : active ? '467 190 566 644' : '96 32 162 178'
+  // Match Ryo's head size and foot baseline between the two differently proportioned originals.
+  const frame = who === 'shiro' ? '390 88 560 810' : active ? '460 126 622 708' : '96 32 162 178'
   const width = who === 'shiro' ? 1280 : active ? 1448 : 300
   const height = who === 'shiro' ? 960 : active ? 1086 : 225
   return <svg viewBox={frame} width="88" height="108" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
@@ -186,11 +187,15 @@ export function RowingGame({ onExit }: GameScreenProps) {
   const responseWho = calendarLine?.who ?? (encounter ? complaining ? 'couple' : 'shiro' : dailyLine?.who ?? chiefLine?.who ?? (moodLine ? 'ryo' : coupleLine ? 'couple' : undefined))
   const responseSpeaker = calendarLine ? calendarLine.who==='ryo'?'月云了':'宇都木士郎' : encounter ? complaining ? '周围的情侣' : '宇都木士郎' : dailyLine ? dailyLine.who === 'ryo' ? '月云了' : '宇都木士郎' : chiefLine?.speaker ?? (moodLine ? '月云了' : coupleLine ? '周围的情侣' : '')
   const responseSeat = seats[responseWho === 'ryo' ? 1 : 0]
-  const encounterAnchor = responseWho === 'couple' && couple ? { x: (couple.x - state.cameraX) / 390 * size.width, y: 50 + (couple.y - state.cameraY) / 700 * (size.height - 50) - 110 * boatScale } : { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
+  const speakingCouple = responseWho === 'couple' ? couple : undefined
+  const coupleCenter = speakingCouple ? { x: (speakingCouple.x - state.cameraX) / 390 * size.width, y: 50 + (speakingCouple.y - state.cameraY) / 700 * (size.height - 50) } : undefined
+  const encounterAnchor = coupleCenter ?? { x: responseSeat.x, y: responseSeat.y - 108 * boatScale }
   const responseWidth = Math.min(300, size.width - 32, Math.max(112, response.length * 16 + 44, responseSpeaker.length * 12 + 44))
   const responseHeight = measuredResponse.text === response && measuredResponse.width === responseWidth ? measuredResponse.height : 62 + Math.ceil(response.length * 16 / (responseWidth - 40)) * 26
   const protectedBoat = rowingBounds({ x: (state.x - state.cameraX) / 390 * size.width, y: 50 + (state.y - state.cameraY) / 700 * (size.height - 50) }, radians, boatScale, seats)
-  const responsePosition = placeResponse(size, encounterAnchor, protectedBoat, responseWidth, responseHeight)
+  const speakerBounds = speakingCouple && coupleCenter ? rowingBounds(coupleCenter, speakingCouple.heading, boatScale, []) : undefined
+  const responsePosition = placeResponse(size, encounterAnchor, protectedBoat, responseWidth, responseHeight, speakerBounds)
+  const leader = speakingCouple && coupleCenter ? coupleLeader(responsePosition, responseWidth, responseHeight, coupleCenter, speakingCouple.heading, boatScale) : null
   useLayoutEffect(() => {
     const element = responseElement.current
     if (!element) return
@@ -275,7 +280,10 @@ export function RowingGame({ onExit }: GameScreenProps) {
       style={{ left: bubbleLeft, top: bubbleY, width: bubbleWidth, '--row-tail-x': `${Math.max(18, Math.min(bubbleWidth - 18, speakerSeat.x - bubbleLeft))}px` } as CSSProperties}>
       <span>{dialogue.speaker}</span><p>{dialogue.text}</p>
     </div> : null}
-    {!dialogue && response ? <div ref={responseElement} className={`rowing-dialogue rowing-response ${calendarLine ? 'rowing-calendar-response' : encounter ? 'rowing-collision-response' : dailyLine ? 'rowing-daily-response' : chiefLine ? 'rowing-chief-response' : moodLine ? 'rowing-mood-response' : 'rowing-couple-response'}`} role="status" data-chat={calendarChat ? calendarChat.birthday ? 'birthday' : 'holiday' : dailyChat?.kind ?? (moodLine ? state.ryoMood.speech : coupleChat?.kind)} data-speaker={responseWho} data-below={responsePosition.below}
+    {!dialogue && response && leader ? <svg className="rowing-couple-leader" width={size.width} height={size.height} aria-hidden="true" data-boat={speakingCouple?.id}>
+      <path d={`M${leader.start.x} ${leader.start.y}L${leader.target.x} ${leader.target.y}`}/><circle cx={leader.target.x} cy={leader.target.y} r="2.5"/>
+    </svg> : null}
+    {!dialogue && response ? <div ref={responseElement} className={`rowing-dialogue rowing-response ${calendarLine ? 'rowing-calendar-response' : encounter ? 'rowing-collision-response' : dailyLine ? 'rowing-daily-response' : chiefLine ? 'rowing-chief-response' : moodLine ? 'rowing-mood-response' : 'rowing-couple-response'}`} role="status" data-chat={calendarChat ? calendarChat.birthday ? 'birthday' : 'holiday' : dailyChat?.kind ?? (moodLine ? state.ryoMood.speech : coupleChat?.kind)} data-speaker={responseWho} data-boat={speakingCouple?.id} data-below={responsePosition.below}
       style={{ left: responsePosition.left, top: responsePosition.top, transform: 'none', width: responseWidth, '--row-tail-x': `${responsePosition.tailX}px` } as CSSProperties}>
       <span>{responseSpeaker}</span><p>{response}</p>
     </div> : null}

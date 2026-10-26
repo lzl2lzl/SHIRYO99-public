@@ -52,6 +52,10 @@ body:has(.rowing-screen) { padding: 0; background: #dbe7e6; }
 .rowing-dialogue p { margin: 9px 0 0; font-size: 16px; line-height: 1.6; }
 .rowing-dialogue i { display: block; text-align: right; font-style: normal; font-size: 12px; }
 .rowing-response { pointer-events: none; }
+.rowing-response[data-speaker="couple"]::after { display: none; }
+.rowing-couple-leader { position: absolute; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
+.rowing-couple-leader path { fill: none; stroke: #f4f0e9; stroke-width: 2; stroke-linecap: round; }
+.rowing-couple-leader circle { fill: #f4f0e9; }
 .rowing-response span { color: #845b77; }
 .rowing-dock { position: absolute; height: 44px; background: #c8ae8c; border-top: 7px solid #e6cfa9; border-bottom: 7px solid #9c7961; pointer-events: none; }
 .rowing-dock i { position: absolute; left: 0; right: 0; top: 8px; border-top: 2px solid #ae8f73; }
