@@ -1,6 +1,13 @@
 export interface Rect { left: number; top: number; right: number; bottom: number }
 export interface Point { x: number; y: number }
 
+/** Quiet asides hug the hull rather than reserving the full sweep of its oars. */
+export function coupleTextBounds(center: Point, angle: number, scale: number): Rect {
+  const c = Math.cos(angle), s = Math.sin(angle)
+  const x = Math.hypot(68 * c, 102 * s) * scale, y = Math.hypot(68 * s, 102 * c) * scale
+  return { left: center.x - x, right: center.x + x, top: center.y - y, bottom: center.y + y }
+}
+
 export function overlaps(a: Rect, b: Rect) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
 }
@@ -40,19 +47,4 @@ export function placeResponse(view: { width: number; height: number }, anchor: P
   // A short viewport may force the bubble above the scene's header; it must still never cover the boat.
   const result = candidates[0] ?? (speakerBoat ? placeResponse(view, anchor, boat, width, height) : { left: clampX(anchor.x - width / 2), top: boat.top - height - 14, below: false })
   return { left: result.left, top: result.top, below: result.below, tailX: Math.max(18, Math.min(width - 18, anchor.x - result.left)) }
-}
-
-/** Connect the bubble to the actual hull, including when avoiding the player displaced the bubble. */
-export function coupleLeader(bubble: { left: number; top: number }, width: number, height: number, center: Point, heading: number, scale: number) {
-  const middle = { x: bubble.left + width / 2, y: bubble.top + height / 2 }
-  const dx = middle.x - center.x, dy = middle.y - center.y, distance = Math.hypot(dx, dy) || 1
-  const nx = dx / distance, ny = dy / distance, c = Math.cos(heading), s = Math.sin(heading)
-  const localX = c * nx + s * ny, localY = -s * nx + c * ny
-  const radius = scale / Math.sqrt((localX / 68) ** 2 + (localY / 102) ** 2)
-  const gap = Math.hypot(center.x - Math.max(bubble.left, Math.min(bubble.left + width, center.x)), center.y - Math.max(bubble.top, Math.min(bubble.top + height, center.y)))
-  const reach = Math.min(radius, Math.max(0, gap - 12))
-  const target = { x: center.x + nx * reach, y: center.y + ny * reach }
-  const top = center.y < middle.y
-  const start = { x: Math.max(bubble.left + 18, Math.min(bubble.left + width - 18, target.x)), y: top ? bubble.top : bubble.top + height }
-  return { start, target }
 }
